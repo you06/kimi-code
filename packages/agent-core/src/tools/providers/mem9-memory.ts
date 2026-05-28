@@ -229,18 +229,21 @@ function normalizeMemory(raw: unknown): Mem9MemoryResult | undefined {
   const item = raw as RawSearchMemory;
   const content = typeof item.content === 'string' ? item.content.trim() : '';
   if (content.length === 0) return undefined;
-  const out: Mem9MemoryResult = { content };
-  const confidence = numberOrString(item.confidence);
-  if (confidence !== undefined) out.confidence = confidence;
-  const score = numberOrString(item.score);
-  if (score !== undefined) out.score = score;
-  if (typeof item.memory_type === 'string' && item.memory_type.length > 0) {
-    out.memoryType = item.memory_type;
-  }
-  if (typeof item.relative_age === 'string' && item.relative_age.length > 0) {
-    out.relativeAge = item.relative_age;
-  }
-  return out;
+  const memoryType =
+    typeof item.memory_type === 'string' && item.memory_type.length > 0
+      ? item.memory_type
+      : undefined;
+  const relativeAge =
+    typeof item.relative_age === 'string' && item.relative_age.length > 0
+      ? item.relative_age
+      : undefined;
+  return {
+    content,
+    confidence: numberOrString(item.confidence),
+    score: numberOrString(item.score),
+    memoryType,
+    relativeAge,
+  };
 }
 
 function numberOrString(value: unknown): number | string | undefined {
