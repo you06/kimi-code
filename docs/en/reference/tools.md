@@ -2,7 +2,7 @@
 
 Built-in tools are the tool set provided by Kimi Code CLI alongside its core engine — no MCP server installation required. The Agent automatically selects and calls these tools based on the task at hand during each conversation; users can inspect the details of each tool call through the approval interface.
 
-Compared to MCP tools, built-in tools are managed directly by the runtime, their lifecycle is bound to the session, and no external process is required. Both follow the same unified approval mechanism: **read-only tools** (such as `Read`, `Grep`, `Glob`) are automatically allowed by default, while **write and execution tools** (such as `Write`, `Edit`, `Bash`) require user approval by default. In YOLO mode, approval for regular tool calls is skipped; Plan mode exit approval is not affected.
+Compared to MCP tools, built-in tools are managed directly by the runtime, their lifecycle is bound to the session, and no external process is required. Both follow the same unified approval mechanism: **read-only tools** (such as `Read`, `Grep`, `Glob`, `WebSearch`, and `Mem9MemorySearch`) are automatically allowed by default, while **write and execution tools** (such as `Write`, `Edit`, `Bash`, `TaskStop`, and `Mem9MemoryStore`) require user approval by default. In YOLO mode, approval for regular tool calls is skipped; Plan mode exit approval is not affected.
 
 ## File Tools
 
@@ -56,6 +56,17 @@ Foreground mode blocks the current turn until the command completes or times out
 **`WebSearch`** accepts `query` (search terms) and optional `limit` (number of results to return, 1–20; defaults to 5) and `include_content` (whether to return the page body; defaults to false). Requires the host to provide a search implementation; when not injected, the tool does not appear in the tool list.
 
 **`FetchURL`** accepts a single `url` parameter and returns the page content. For HTML pages, the host extracts the body text rather than returning the full HTML; plain text or Markdown pages are passed through directly. Also requires a host-provided implementation.
+
+## Memory Tools
+
+| Tool | Default Approval | Description |
+| --- | --- | --- |
+| `Mem9MemorySearch` | Auto-approved | Search Mem9 long-term memory |
+| `Mem9MemoryStore` | Requires approval | Store content into Mem9 long-term memory |
+
+These tools appear only when `[services.mem9_memory]` is configured and a Mem9 API key is available. `Mem9MemorySearch` accepts `query`, an optional `limit` (1–20, default 5), and an optional `scan_all` flag. Searches are cross-session by default and do not send the current Kimi Code session ID, so memories stored in earlier sessions can be recalled later.
+
+`Mem9MemoryStore` accepts `content` and submits it for Mem9 server-side smart extraction. Store requests include the current Kimi Code session ID as source metadata, but writes are asynchronous, best-effort, and not guaranteed unique; the Mem9 service handles extraction and de-duplication. Stored content may not be searchable immediately.
 
 ## Plan Mode
 

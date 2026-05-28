@@ -479,6 +479,7 @@ export class Session {
       ...config,
       type,
       kaos: this.options.kaos.withCwd(cwd),
+      sessionId: this.options.id,
       toolServices: this.options.toolServices,
       config: this.options.config,
       homedir,

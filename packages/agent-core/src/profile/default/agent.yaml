@@ -22,6 +22,8 @@ tools:
   - TodoList
   - Skill
   - WebSearch
+  - Mem9MemorySearch
+  - Mem9MemoryStore
   - Agent
   - FetchURL
   - AskUserQuestion

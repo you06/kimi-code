@@ -17,6 +17,7 @@ export * from './goal/create-goal';
 export * from './goal/get-goal';
 export * from './goal/set-goal-budget';
 export * from './goal/update-goal';
+export * from './mem9';
 export * from './planning/enter-plan-mode';
 export * from './planning/exit-plan-mode';
 export * from './shell/bash';

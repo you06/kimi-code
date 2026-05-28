@@ -120,6 +120,12 @@ custom_headers = { "X-Search" = "1" }
 base_url = "https://api.kimi.com/coding/v1/fetch"
 api_key = "sk-fetch"
 
+[services.mem9_memory]
+base_url = "https://api.mem9.ai"
+api_key_env_var = "MEM9_API_KEY"
+scan_all = true
+custom_headers = { "X-Mem9-Test" = "1" }
+
 [notifications]
 claim_stale_after_ms = 15000
 `;
@@ -192,6 +198,12 @@ describe('harness config TOML loader', () => {
     ]);
     expect(config.services?.moonshotSearch?.customHeaders).toEqual({ 'X-Search': '1' });
     expect(config.services?.moonshotFetch?.apiKey).toBe('sk-fetch');
+    expect(config.services?.mem9Memory).toMatchObject({
+      baseUrl: 'https://api.mem9.ai',
+      apiKeyEnvVar: 'MEM9_API_KEY',
+      scanAll: true,
+      customHeaders: { 'X-Mem9-Test': '1' },
+    });
 
     expect('theme' in config).toBe(false);
     expect(config.raw?.['theme']).toBe('dark');
@@ -329,6 +341,9 @@ not_registered = true
     expect(text).not.toContain('[[permission.allow]]');
     expect(text).toContain('max_steps_per_turn = 7');
     expect(text).toContain('GOOGLE_CLOUD_PROJECT = "project-1"');
+    expect(text).toContain('[services.mem9_memory]');
+    expect(text).toContain('api_key_env_var = "MEM9_API_KEY"');
+    expect(text).toContain('scan_all = true');
     expect(text).toContain('theme = "dark"');
     expect(text).toContain('claim_stale_after_ms = 15000');
     expect(text).toContain('[[hooks]]');

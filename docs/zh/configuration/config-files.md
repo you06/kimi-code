@@ -56,6 +56,10 @@ goal_command = false
 micro_compaction = false
 background_ask = false
 
+[services.mem9_memory]
+base_url = "https://api.mem9.ai"
+api_key_env_var = "MEM9_API_KEY"
+
 [[permission.rules]]
 decision = "allow"
 pattern = "Read"
@@ -189,7 +193,7 @@ max_context_size = 1047576
 
 ## `services`
 
-`services` 配置网页搜索（`moonshot_search`）和网页抓取（`moonshot_fetch`）两项内置服务。只识别这两个固定 key，其他 key 会被忽略。两项字段相同：
+`services` 配置 Kimi Code CLI 调用的内置外部服务。当前识别 `moonshot_search`（网页搜索）、`moonshot_fetch`（网页抓取）和 `mem9_memory`（Mem9 长期记忆）三个固定 key。`moonshot_search` 与 `moonshot_fetch` 的字段相同：
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -206,6 +210,23 @@ api_key = "sk-xxx"
 [services.moonshot_fetch]
 base_url = "https://api.moonshot.cn/v1/fetch"
 api_key = "sk-xxx"
+```
+
+`mem9_memory` 配置内置的 `Mem9MemorySearch` 与 `Mem9MemoryStore` 工具。若省略该配置，或无法解析 API key，这两个工具不会注册。搜索默认跨 Mem9 长期记忆召回；写入会把内容提交给服务端异步抽取，并附带当前 Kimi Code session id 作为来源信息。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `base_url` | `string` | 否 | Mem9 API 基础 URL；默认 `https://api.mem9.ai` |
+| `api_key` | `string` | 否 | Mem9 API key。共享配置文件中建议优先使用 `api_key_env_var` |
+| `api_key_env_var` | `string` | 否 | 用来读取 Mem9 API key 的环境变量；默认 `MEM9_API_KEY` |
+| `scan_all` | `boolean` | 否 | Mem9 搜索请求中 `scanAll` 参数的默认值 |
+| `custom_headers` | `table<string, string>` | 否 | 请求 Mem9 时附加的自定义 HTTP 头 |
+
+```toml
+[services.mem9_memory]
+base_url = "https://api.mem9.ai"
+api_key_env_var = "MEM9_API_KEY"
+scan_all = false
 ```
 
 ## `permission`
