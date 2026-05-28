@@ -12,6 +12,7 @@ const DEFAULT_APPROVE_TOOLS = new Set([
   'CronList',
   'WebSearch',
   'FetchURL',
+  'Mem9MemorySearch',
   'Agent',
   'AskUserQuestion',
   'Skill',

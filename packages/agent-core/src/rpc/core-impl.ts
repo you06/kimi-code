@@ -5,6 +5,7 @@ import { ErrorCodes, KimiError } from '#/errors';
 import { getRootLogger, log } from '#/logging/logger';
 import { PluginManager } from '#/plugin';
 import { LocalFetchURLProvider } from '#/tools/providers/local-fetch-url';
+import { Mem9MemoryProvider } from '#/tools/providers/mem9-memory';
 import { MoonshotFetchURLProvider } from '#/tools/providers/moonshot-fetch-url';
 import { MoonshotWebSearchProvider } from '#/tools/providers/moonshot-web-search';
 import type { PromisableMethods } from '#/utils/types';
@@ -19,6 +20,7 @@ import {
   resolveKimiHome,
   writeConfigFile,
   type KimiConfig,
+  type Mem9MemoryServiceConfig,
   type MoonshotServiceConfig,
 } from '../config';
 import {
@@ -748,6 +750,7 @@ async function createRuntimeConfig(input: {
   const localFetcher = new LocalFetchURLProvider();
   const searchService = input.config.services?.moonshotSearch;
   const fetchService = input.config.services?.moonshotFetch;
+  const mem9MemoryService = input.config.services?.mem9Memory;
 
   return {
     urlFetcher:
@@ -767,7 +770,29 @@ async function createRuntimeConfig(input: {
             defaultHeaders: input.kimiRequestHeaders,
             ...serviceCredentials(searchService, input.resolveOAuthTokenProvider),
           }),
+    mem9Memory: createMem9MemoryProvider(mem9MemoryService),
   };
+}
+
+function createMem9MemoryProvider(
+  service: Mem9MemoryServiceConfig | undefined,
+): Mem9MemoryProvider | undefined {
+  if (service === undefined) return undefined;
+  const apiKey = resolveMem9ApiKey(service);
+  if (apiKey === undefined) return undefined;
+  return new Mem9MemoryProvider({
+    baseUrl: service.baseUrl,
+    apiKey,
+    scanAll: service.scanAll,
+    customHeaders: service.customHeaders,
+  });
+}
+
+function resolveMem9ApiKey(service: Mem9MemoryServiceConfig): string | undefined {
+  const configured = nonEmptyString(service.apiKey);
+  if (configured !== undefined) return configured;
+  const envVar = nonEmptyString(service.apiKeyEnvVar) ?? 'MEM9_API_KEY';
+  return nonEmptyString(process.env[envVar]);
 }
 
 function serviceCredentials(

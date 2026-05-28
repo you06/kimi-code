@@ -70,6 +70,10 @@ max_running_tasks = 4
 keep_alive_on_exit = false
 agent_task_timeout_s = 900
 
+[services.mem9_memory]
+base_url = "https://api.mem9.ai"
+api_key_env_var = "MEM9_API_KEY"
+
 [[permission.rules]]
 decision = "allow"
 pattern = "Read"
@@ -176,7 +180,7 @@ For testing, you can also synthesize a model entirely from `KIMI_MODEL_*` enviro
 
 ## `services`
 
-`services` configures the built-in external services Kimi Code CLI calls. Only the two fixed keys `moonshot_search` (web search) and `moonshot_fetch` (web fetch) are recognized; other keys are ignored. Both entries share the same fields:
+`services` configures the built-in external services Kimi Code CLI calls. The recognized keys are `moonshot_search` (web search), `moonshot_fetch` (web fetch), and `mem9_memory` (Mem9 long-term memory). `moonshot_search` and `moonshot_fetch` share these fields:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -193,6 +197,23 @@ api_key = "sk-xxx"
 [services.moonshot_fetch]
 base_url = "https://api.moonshot.cn/v1/fetch"
 api_key = "sk-xxx"
+```
+
+`mem9_memory` configures the built-in `Mem9MemorySearch` and `Mem9MemoryStore` tools. If the service is omitted or no API key can be resolved, these tools are not registered. Search reads across Mem9 long-term memory; store writes new content for asynchronous server-side extraction and includes the current Kimi Code session ID as source metadata.
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `base_url` | `string` | No | Mem9 API base URL; defaults to `https://api.mem9.ai` |
+| `api_key` | `string` | No | Mem9 API key. Prefer `api_key_env_var` for shared config files |
+| `api_key_env_var` | `string` | No | Environment variable used to resolve the Mem9 API key; defaults to `MEM9_API_KEY` |
+| `scan_all` | `boolean` | No | Default value for the Mem9 search `scanAll` request parameter |
+| `custom_headers` | `table<string, string>` | No | Custom HTTP headers attached to each Mem9 request |
+
+```toml
+[services.mem9_memory]
+base_url = "https://api.mem9.ai"
+api_key_env_var = "MEM9_API_KEY"
+scan_all = false
 ```
 
 ## `permission`

@@ -13,6 +13,7 @@ export * from './file/grep';
 export * from './file/read';
 export * from './file/read-media';
 export * from './file/write';
+export * from './mem9';
 export * from './planning/enter-plan-mode';
 export * from './planning/exit-plan-mode';
 export * from './shell/bash';

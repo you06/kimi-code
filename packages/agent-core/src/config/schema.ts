@@ -124,9 +124,20 @@ export const MoonshotServiceConfigSchema = z.object({
 
 export type MoonshotServiceConfig = z.infer<typeof MoonshotServiceConfigSchema>;
 
+export const Mem9MemoryServiceConfigSchema = z.object({
+  baseUrl: z.string().optional(),
+  apiKey: z.string().optional(),
+  apiKeyEnvVar: z.string().min(1).optional(),
+  scanAll: z.boolean().optional(),
+  customHeaders: StringRecordSchema.optional(),
+});
+
+export type Mem9MemoryServiceConfig = z.infer<typeof Mem9MemoryServiceConfigSchema>;
+
 export const ServicesConfigSchema = z.object({
   moonshotSearch: MoonshotServiceConfigSchema.optional(),
   moonshotFetch: MoonshotServiceConfigSchema.optional(),
+  mem9Memory: Mem9MemoryServiceConfigSchema.optional(),
 });
 
 export type ServicesConfig = z.infer<typeof ServicesConfigSchema>;
@@ -212,9 +223,11 @@ const PermissionConfigPatchSchema = PermissionConfigSchema.partial();
 const LoopControlPatchSchema = LoopControlSchema.partial();
 const BackgroundConfigPatchSchema = BackgroundConfigSchema.partial();
 const MoonshotServiceConfigPatchSchema = MoonshotServiceConfigSchema.partial();
+const Mem9MemoryServiceConfigPatchSchema = Mem9MemoryServiceConfigSchema.partial();
 const ServicesConfigPatchSchema = z.object({
   moonshotSearch: MoonshotServiceConfigPatchSchema.optional(),
   moonshotFetch: MoonshotServiceConfigPatchSchema.optional(),
+  mem9Memory: Mem9MemoryServiceConfigPatchSchema.optional(),
 });
 
 export const KimiConfigPatchSchema = z

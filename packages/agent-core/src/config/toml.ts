@@ -12,6 +12,7 @@ import {
   type HookDefConfig,
   type KimiConfig,
   type LoopControl,
+  type Mem9MemoryServiceConfig,
   type ModelAlias,
   type MoonshotServiceConfig,
   type OAuthRef,
@@ -424,6 +425,11 @@ function servicesToToml(services: ServicesConfig, rawServices: unknown): Record<
   } else {
     delete out['moonshot_fetch'];
   }
+  if (services.mem9Memory !== undefined) {
+    out['mem9_memory'] = mem9MemoryServiceToToml(services.mem9Memory);
+  } else {
+    delete out['mem9_memory'];
+  }
   return out;
 }
 
@@ -433,6 +439,18 @@ function serviceToToml(service: MoonshotServiceConfig): Record<string, unknown> 
     if (key === 'oauth' && value !== undefined) {
       out[camelToSnake(key)] = oauthToToml(value as OAuthRef);
     } else if (key === 'customHeaders' && value !== undefined) {
+      out[camelToSnake(key)] = cloneUnknown(value);
+    } else {
+      setDefined(out, camelToSnake(key), value);
+    }
+  }
+  return out;
+}
+
+function mem9MemoryServiceToToml(service: Mem9MemoryServiceConfig): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(service)) {
+    if (key === 'customHeaders' && value !== undefined) {
       out[camelToSnake(key)] = cloneUnknown(value);
     } else {
       setDefined(out, camelToSnake(key), value);

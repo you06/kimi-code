@@ -41,7 +41,10 @@ export class ToolManager {
   protected readonly store: Partial<ToolStoreData> = {};
   private mcpToolStatusUnsubscribe: (() => void) | undefined;
 
-  constructor(protected readonly agent: Agent) {
+  constructor(
+    protected readonly agent: Agent,
+    private readonly options: { readonly sessionId?: string } = {},
+  ) {
     this.attachMcpTools();
     if (agent.config.hasProvider) {
       this.initializeBuiltinTools();
@@ -394,6 +397,9 @@ export class ToolManager {
           ),
         toolServices?.webSearcher && new b.WebSearchTool(toolServices.webSearcher),
         toolServices?.urlFetcher && new b.FetchURLTool(toolServices.urlFetcher),
+        toolServices?.mem9Memory && new b.Mem9MemorySearchTool(toolServices.mem9Memory),
+        toolServices?.mem9Memory &&
+          new b.Mem9MemoryStoreTool(toolServices.mem9Memory, this.options.sessionId),
       ]
         .filter((tool) => !!tool)
         .map((tool) => [tool.name, tool] as const),

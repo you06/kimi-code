@@ -2,7 +2,7 @@
 
 内置工具是 Kimi Code CLI 随核心引擎一起提供的工具集，无需安装 MCP server 即可使用。Agent 在每次对话中会根据任务需要自动选择并调用这些工具；用户也可以通过权限审批界面查看每次工具调用的细节。
 
-与 MCP 工具相比，内置工具由运行时直接管理，生命周期与会话绑定，无需外部进程。两者都遵循统一的审批机制：**只读类工具**（如 `Read`、`Grep`、`Glob`、`WebSearch` 等）默认自动放行，**写入与执行类工具**（如 `Write`、`Edit`、`Bash`、`TaskStop`）默认需要用户审批。在 YOLO 模式下，普通工具调用的审批会被跳过，但 Plan 模式下的退出审批不受影响。
+与 MCP 工具相比，内置工具由运行时直接管理，生命周期与会话绑定，无需外部进程。两者都遵循统一的审批机制：**只读类工具**（如 `Read`、`Grep`、`Glob`、`WebSearch`、`Mem9MemorySearch` 等）默认自动放行，**写入与执行类工具**（如 `Write`、`Edit`、`Bash`、`TaskStop`、`Mem9MemoryStore`）默认需要用户审批。在 YOLO 模式下，普通工具调用的审批会被跳过，但 Plan 模式下的退出审批不受影响。
 
 ## 文件类
 
@@ -49,6 +49,17 @@
 **`WebSearch`** 接受 `query`（搜索词）和可选的 `limit`（返回结果数，1–20，默认 5）及 `include_content`（是否返回网页正文，默认 false，开启后消耗 token 较多）。该工具需要宿主提供搜索实现，未注入实现时不会出现在工具列表中。
 
 **`FetchURL`** 接受单个 `url` 参数，返回页面内容。对于 HTML 页面，宿主会提取正文文章（`extracted`）而非返回完整 HTML；纯文本或 Markdown 页面则直接透传（`passthrough`）。同样需要宿主注入实现。
+
+## 记忆类
+
+| 工具 | 默认审批 | 说明 |
+| --- | --- | --- |
+| `Mem9MemorySearch` | 自动放行 | 搜索 Mem9 长期记忆 |
+| `Mem9MemoryStore` | 需审批 | 把内容写入 Mem9 长期记忆 |
+
+只有配置了 `[services.mem9_memory]` 且能解析到 Mem9 API key 时，这两个工具才会出现。`Mem9MemorySearch` 接受 `query`、可选的 `limit`（1–20，默认 5）和可选的 `scan_all`。搜索默认跨 session，不会发送当前 Kimi Code session id，因此过去 session 写入的记忆可以在之后召回。
+
+`Mem9MemoryStore` 接受 `content`，并提交给 Mem9 服务端做智能抽取。写入请求会附带当前 Kimi Code session id 作为来源信息，但写入是异步、best-effort 的，不保证唯一；抽取和去重由 Mem9 服务端处理。新写入内容不一定立刻可搜索。
 
 ## Plan 模式
 

@@ -69,6 +69,7 @@ export type AgentType = 'main' | 'sub' | 'independent';
 export interface AgentOptions {
   readonly kaos: Kaos;
   readonly config?: KimiConfig;
+  readonly sessionId?: string;
   readonly homedir?: string;
   readonly rpc?: Partial<SDKAgentRPC>;
   readonly persistence?: AgentRecordPersistence;
@@ -164,7 +165,7 @@ export class Agent {
     this.planMode = new PlanMode(this);
     this.usage = new UsageRecorder(this);
     this.skills = options.skills ? new SkillManager(this, options.skills) : null;
-    this.tools = new ToolManager(this);
+    this.tools = new ToolManager(this, { sessionId: options.sessionId });
     this.background = new BackgroundManager(
       this,
       this.homedir === undefined ? undefined : new BackgroundTaskPersistence(this.homedir),
