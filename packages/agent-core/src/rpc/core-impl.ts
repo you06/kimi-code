@@ -895,7 +895,7 @@ function createMem9MemoryProvider(
   if (apiKey === undefined) {
     if (service !== undefined) {
       log.warn('mem9 memory service configured but api key was not resolved', {
-        apiKeyEnvVar: service.apiKeyEnvVar ?? 'MEM9_API_KEY',
+        apiKeyEnvVar: describeMem9ApiKeyEnvVar(service.apiKeyEnvVar),
       });
     }
     return undefined;
@@ -917,6 +917,12 @@ function resolveMem9ApiKey(service: Mem9MemoryServiceConfig | undefined): string
     if (fromConfiguredEnv !== undefined) return fromConfiguredEnv;
   }
   return nonEmptyString(process.env['MEM9_API_KEY']);
+}
+
+function describeMem9ApiKeyEnvVar(value: string | undefined): string {
+  const envVar = nonEmptyString(value) ?? 'MEM9_API_KEY';
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(envVar)) return envVar;
+  return '<invalid env var name; did you mean api_key?>';
 }
 
 function serviceCredentials(
