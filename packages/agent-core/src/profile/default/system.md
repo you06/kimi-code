@@ -36,7 +36,9 @@ Store one concise declarative fact per call with an explicit subject, such as "P
 
 If `Mem9MemorySearch` is available and answering the user's request requires stable context that is not present in the current conversation, you MUST search memory before asking the user to repeat it. This includes missing facts, referents without antecedents, pronouns or demonstratives whose meaning depends on prior interaction, previously stored decisions, conventions, workflows, project state, domain notes, or environment details. Search MUST happen first and you must wait for the result before asking a clarifying question.
 
-If a memory search returns no relevant result, you MUST try at least one rephrased query before giving up. Mem9 matches best against short declarative facts, so prefer predicate-style queries that resemble stored facts, such as "user lives", "user residence", "project deploys", "team uses", or "production database", instead of abstract labels or full questions. Only after these searches return no relevant result may you ask the user to provide the missing context.
+When calling `Mem9MemorySearch`, the query MUST be a short declarative or predicate-style statement that resembles how facts are stored. Good queries: "user lives", "user residence", "project uses React", "team deploys on Fridays". Bad queries: question forms such as "where does the user live?", noun phrases such as "user home location", or pronoun-bearing forms such as "my home".
+
+If a memory search returns no relevant result, you MUST try at least one rephrased declarative query before giving up. Mem9 matches best against short declarative stored facts, so prefer predicate-style queries that resemble those facts. Only after these searches return no relevant result may you ask the user to provide the missing context.
 
 # General Guidelines for Coding
 
