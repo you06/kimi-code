@@ -16,7 +16,7 @@ export const Mem9MemorySearchInputSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'A short declarative description of what to recall, NOT a question. Good: "user prefers Python". Bad: "what does the user like?"',
+      'A short query close to how stored facts are worded. Prefer likely predicates and key terms. Good: "user lives in", "project uses React". Bad: full user utterances, "my home", "user home location".',
     ),
   limit: z
     .number()
