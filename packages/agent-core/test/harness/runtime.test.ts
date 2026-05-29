@@ -21,6 +21,7 @@ describe('KimiCore runtime config', () => {
       await rm(tmp, { recursive: true, force: true });
     }
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('uses the shared OAuth resolver for Moonshot service tokens', async () => {
@@ -122,5 +123,44 @@ max_context_size = 100000
     const mainAgent = session?.agents.get('main');
 
     expect(mainAgent?.config.modelAlias).toBe('default-mock');
+  });
+
+  it('registers mem9 memory tools from the default MEM9_API_KEY env without service config', async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'kimi-core-runtime-'));
+    const homeDir = join(tmp, 'home');
+    const workDir = join(tmp, 'work');
+    await mkdir(homeDir, { recursive: true });
+    await mkdir(workDir, { recursive: true });
+    await writeFile(
+      join(homeDir, 'config.toml'),
+      `default_model = "default-mock"
+
+[providers.test]
+type = "kimi"
+api_key = "test-key"
+
+[models."default-mock"]
+provider = "test"
+model = "default-mock"
+max_context_size = 100000
+`,
+    );
+    vi.stubEnv('MEM9_API_KEY', 'mem9-test-key');
+
+    const [coreRpc, sdkRpc] = createRPC<CoreAPI, SDKAPI>();
+    void new KimiCore(coreRpc, { homeDir });
+    const rpc = await sdkRpc({
+      emitEvent: vi.fn(),
+      requestApproval: vi.fn(async (): Promise<ApprovalResponse> => ({ decision: 'rejected' })),
+      requestQuestion: vi.fn(async () => null),
+      toolCall: vi.fn(async () => ({ output: '' })),
+    });
+
+    const created = await rpc.createSession({ id: 'ses_runtime_mem9_default_env', workDir });
+    const tools = await rpc.getTools({ sessionId: created.id, agentId: 'main' });
+
+    expect(tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining(['Mem9MemorySearch', 'Mem9MemoryStore']),
+    );
   });
 });
