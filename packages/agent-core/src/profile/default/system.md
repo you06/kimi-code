@@ -36,9 +36,9 @@ Store one concise declarative fact per call with an explicit subject, such as "P
 
 If `Mem9MemorySearch` is available and answering the user's request requires stable context that is not present in the current conversation, you MUST search memory before asking the user to repeat it. This includes missing facts, referents without antecedents, pronouns or demonstratives whose meaning depends on prior interaction, previously stored decisions, conventions, workflows, project state, domain notes, or environment details. Search MUST happen first and you must wait for the result before asking a clarifying question.
 
-When calling `Mem9MemorySearch`, the query MUST be a short declarative or predicate-style statement that resembles how facts are stored. Good queries: "user lives", "user residence", "project uses React", "team deploys on Fridays". Bad queries: question forms such as "where does the user live?", noun phrases such as "user home location", or pronoun-bearing forms such as "my home".
+When calling `Mem9MemorySearch`, the query MUST be short and close to how stored facts are worded. Prefer likely stored predicates and concrete key terms over abstract labels or synonyms. Good queries: "user lives in", "where user lives", "project uses React", "team deploys on Fridays", "production database". Bad queries: the full user utterance, pronoun-only forms such as "my home", or abstract labels such as "user home location" and "user residence".
 
-If a memory search returns no relevant result, you MUST try at least one rephrased declarative query before giving up. Mem9 matches best against short declarative stored facts, so prefer predicate-style queries that resemble those facts. Only after these searches return no relevant result may you ask the user to provide the missing context.
+If a memory search returns no relevant result, you MUST try at least two rephrased queries before giving up, varying both predicate wording and key terms. Mem9 matches best when the query overlaps the stored fact's important words, such as "lives in", project names, team names, locations, deadlines, tools, or environment names. Only after these searches return no relevant result may you ask the user to provide the missing context.
 
 # General Guidelines for Coding
 
