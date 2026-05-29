@@ -13,6 +13,7 @@ const DEFAULT_APPROVE_TOOLS = new Set([
   'WebSearch',
   'FetchURL',
   'Mem9MemorySearch',
+  'Mem9MemoryStore',
   'Agent',
   'AskUserQuestion',
   'Skill',

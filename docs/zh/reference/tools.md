@@ -2,7 +2,7 @@
 
 内置工具是 Kimi Code CLI 随核心引擎一起提供的工具集，无需安装 MCP server 即可使用。Agent 在每次对话中会根据任务需要自动选择并调用这些工具；用户也可以通过权限审批界面查看每次工具调用的细节。
 
-与 MCP 工具相比，内置工具由运行时直接管理，生命周期与会话绑定，无需外部进程。两者都遵循统一的审批机制：**只读类工具**（如 `Read`、`Grep`、`Glob`、`WebSearch`、`Mem9MemorySearch` 等）默认自动放行，**写入与执行类工具**（如 `Write`、`Edit`、`Bash`、`TaskStop`、`Mem9MemoryStore`）默认需要用户审批。在 YOLO 模式下，普通工具调用的审批会被跳过，但 Plan 模式下的退出审批不受影响。
+与 MCP 工具相比，内置工具由运行时直接管理，生命周期与会话绑定，无需外部进程。两者都遵循统一的审批机制：**只读类工具**（如 `Read`、`Grep`、`Glob`、`WebSearch`、`Mem9MemorySearch` 等）默认自动放行，绝大多数**写入与执行类工具**（如 `Write`、`Edit`、`Bash`、`TaskStop`）默认需要用户审批。只要配置了 Mem9 API key，`Mem9MemoryStore` 就会自动放行，因为启用 Mem9 服务会被视为选择开启长期记忆读写。在 YOLO 模式下，普通工具调用的审批会被跳过，但 Plan 模式下的退出审批不受影响。
 
 ## 文件类
 
@@ -55,9 +55,9 @@
 | 工具 | 默认审批 | 说明 |
 | --- | --- | --- |
 | `Mem9MemorySearch` | 自动放行 | 搜索 Mem9 长期记忆 |
-| `Mem9MemoryStore` | 需审批 | 把内容写入 Mem9 长期记忆 |
+| `Mem9MemoryStore` | 配置 Mem9 后自动放行 | 把内容写入 Mem9 长期记忆 |
 
-只要能解析到 Mem9 API key，这两个工具就会出现。使用默认服务时设置环境变量 `MEM9_API_KEY` 即可；如果需要自定义 base URL、环境变量名、明文 key、扫描模式或自定义请求头，再配置 `[services.mem9_memory]`。`Mem9MemorySearch` 接受 `query`、可选的 `limit`（1–20，默认 5）和可选的 `scan_all`。搜索默认跨 session，不会发送当前 Kimi Code session id，因此过去 session 写入的记忆可以在之后召回。
+只要能解析到 Mem9 API key，这两个工具就会出现。使用默认服务时设置环境变量 `MEM9_API_KEY` 即可；如果需要自定义 base URL、环境变量名、明文 key、扫描模式或自定义请求头，再配置 `[services.mem9_memory]`。工具注册后，搜索和写入都会默认自动放行；如果不希望自动写入长期记忆，请不要配置 Mem9，或为 `Mem9MemoryStore` 添加显式拒绝规则。`Mem9MemorySearch` 接受 `query`、可选的 `limit`（1–20，默认 5）和可选的 `scan_all`。搜索默认跨 session，不会发送当前 Kimi Code session id，因此过去 session 写入的记忆可以在之后召回。
 
 `Mem9MemoryStore` 接受 `content`，并提交给 Mem9 服务端做智能抽取。写入请求会附带当前 Kimi Code session id 作为来源信息，但写入是异步、best-effort 的，不保证唯一；抽取和去重由 Mem9 服务端处理。新写入内容不一定立刻可搜索。
 

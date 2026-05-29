@@ -35,6 +35,15 @@ describe('DefaultToolApprovePermissionPolicy', () => {
     expect(policy.evaluate(policyContext('CronList', {}))).toEqual({ kind: 'approve' });
   });
 
+  it('auto-approves Mem9 memory tools', () => {
+    expect(policy.evaluate(policyContext('Mem9MemorySearch', { query: 'user lives in' }))).toEqual({
+      kind: 'approve',
+    });
+    expect(
+      policy.evaluate(policyContext('Mem9MemoryStore', { content: 'User lives in Chiba' })),
+    ).toEqual({ kind: 'approve' });
+  });
+
   it('does not approve CronCreate', () => {
     expect(
       policy.evaluate(policyContext('CronCreate', { cron: '*/5 * * * *', prompt: 'ping' })),
