@@ -199,7 +199,7 @@ base_url = "https://api.moonshot.cn/v1/fetch"
 api_key = "sk-xxx"
 ```
 
-`mem9_memory` configures the built-in `Mem9MemorySearch` and `Mem9MemoryStore` tools. If the service is omitted or no API key can be resolved, these tools are not registered. Search reads across Mem9 long-term memory; store writes new content for asynchronous server-side extraction and includes the current Kimi Code session ID as source metadata.
+`mem9_memory` configures the built-in `Mem9MemorySearch` and `Mem9MemoryStore` tools. If this section is omitted but `MEM9_API_KEY` is set in the environment, Kimi Code enables these tools with the default Mem9 settings. If no API key can be resolved, these tools are not registered. Search reads across Mem9 long-term memory; store writes new content for asynchronous server-side extraction and includes the current Kimi Code session ID as source metadata.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -214,6 +214,12 @@ api_key = "sk-xxx"
 base_url = "https://api.mem9.ai"
 api_key_env_var = "MEM9_API_KEY"
 scan_all = false
+```
+
+For the default service, this config section can be omitted entirely:
+
+```bash
+export MEM9_API_KEY=...
 ```
 
 ## `permission`

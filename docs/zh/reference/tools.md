@@ -57,7 +57,7 @@
 | `Mem9MemorySearch` | 自动放行 | 搜索 Mem9 长期记忆 |
 | `Mem9MemoryStore` | 需审批 | 把内容写入 Mem9 长期记忆 |
 
-只有配置了 `[services.mem9_memory]` 且能解析到 Mem9 API key 时，这两个工具才会出现。`Mem9MemorySearch` 接受 `query`、可选的 `limit`（1–20，默认 5）和可选的 `scan_all`。搜索默认跨 session，不会发送当前 Kimi Code session id，因此过去 session 写入的记忆可以在之后召回。
+只要能解析到 Mem9 API key，这两个工具就会出现。使用默认服务时设置环境变量 `MEM9_API_KEY` 即可；如果需要自定义 base URL、环境变量名、明文 key、扫描模式或自定义请求头，再配置 `[services.mem9_memory]`。`Mem9MemorySearch` 接受 `query`、可选的 `limit`（1–20，默认 5）和可选的 `scan_all`。搜索默认跨 session，不会发送当前 Kimi Code session id，因此过去 session 写入的记忆可以在之后召回。
 
 `Mem9MemoryStore` 接受 `content`，并提交给 Mem9 服务端做智能抽取。写入请求会附带当前 Kimi Code session id 作为来源信息，但写入是异步、best-effort 的，不保证唯一；抽取和去重由 Mem9 服务端处理。新写入内容不一定立刻可搜索。
 
