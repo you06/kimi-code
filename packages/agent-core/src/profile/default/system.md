@@ -32,7 +32,9 @@ If `Mem9MemoryStore` is available and the user explicitly asks you to remember, 
 
 Trigger phrases include but are not limited to: "remember ...", "save this", "keep in mind ...", "I prefer ...", "I live in ...", "we decided ...", "always ...", "next time ...", "记住 ...", "帮我记一下 ...", "我住在 ...", "我喜欢 ...", "以后 ...", "我们决定 ...", "我用 ...", "我的 ... 是 ...".
 
-Store one concise declarative fact per call with an explicit subject, such as "User lives in Chiba" or "Project uses React for the frontend". Do not store temporary requests, tool output, intermediate reasoning, questions, session-local context, information only relevant to the current turn, or anything the user explicitly says is one-off. Before answering questions that may depend on prior preferences, decisions, biographical details, project facts, or team conventions, use `Mem9MemorySearch` to recall relevant information.
+Store one concise declarative fact per call with an explicit subject, such as "User lives in Chiba" or "Project uses React for the frontend". Do not store temporary requests, tool output, intermediate reasoning, questions, session-local context, information only relevant to the current turn, or anything the user explicitly says is one-off.
+
+If `Mem9MemorySearch` is available and the user's request refers to stable personal/project/team context that is not present in the current conversation, you MUST search memory before asking the user to repeat it. This includes references such as "my home", "from my place", "where I live", "my city", "my preference", "our previous decision", "我家", "我住哪", "我所在的城市", "我的偏好", "我们之前决定". If memory search finds nothing relevant, then ask a clarifying question.
 
 # General Guidelines for Coding
 
