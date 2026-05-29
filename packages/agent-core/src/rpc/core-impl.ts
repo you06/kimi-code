@@ -797,8 +797,12 @@ function createMem9MemoryProvider(
 function resolveMem9ApiKey(service: Mem9MemoryServiceConfig | undefined): string | undefined {
   const configured = nonEmptyString(service?.apiKey);
   if (configured !== undefined) return configured;
-  const envVar = nonEmptyString(service?.apiKeyEnvVar) ?? 'MEM9_API_KEY';
-  return nonEmptyString(process.env[envVar]);
+  const envVar = nonEmptyString(service?.apiKeyEnvVar);
+  if (envVar !== undefined) {
+    const fromConfiguredEnv = nonEmptyString(process.env[envVar]);
+    if (fromConfiguredEnv !== undefined) return fromConfiguredEnv;
+  }
+  return nonEmptyString(process.env['MEM9_API_KEY']);
 }
 
 function serviceCredentials(
