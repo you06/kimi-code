@@ -891,21 +891,27 @@ async function createRuntimeConfig(input: {
 function createMem9MemoryProvider(
   service: Mem9MemoryServiceConfig | undefined,
 ): Mem9MemoryProvider | undefined {
-  if (service === undefined) return undefined;
   const apiKey = resolveMem9ApiKey(service);
-  if (apiKey === undefined) return undefined;
+  if (apiKey === undefined) {
+    if (service !== undefined) {
+      log.warn('mem9 memory service configured but api key was not resolved', {
+        apiKeyEnvVar: service.apiKeyEnvVar ?? 'MEM9_API_KEY',
+      });
+    }
+    return undefined;
+  }
   return new Mem9MemoryProvider({
-    baseUrl: service.baseUrl,
+    baseUrl: service?.baseUrl,
     apiKey,
-    scanAll: service.scanAll,
-    customHeaders: service.customHeaders,
+    scanAll: service?.scanAll,
+    customHeaders: service?.customHeaders,
   });
 }
 
-function resolveMem9ApiKey(service: Mem9MemoryServiceConfig): string | undefined {
-  const configured = nonEmptyString(service.apiKey);
+function resolveMem9ApiKey(service: Mem9MemoryServiceConfig | undefined): string | undefined {
+  const configured = nonEmptyString(service?.apiKey);
   if (configured !== undefined) return configured;
-  const envVar = nonEmptyString(service.apiKeyEnvVar) ?? 'MEM9_API_KEY';
+  const envVar = nonEmptyString(service?.apiKeyEnvVar) ?? 'MEM9_API_KEY';
   return nonEmptyString(process.env[envVar]);
 }
 

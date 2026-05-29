@@ -212,7 +212,7 @@ base_url = "https://api.moonshot.cn/v1/fetch"
 api_key = "sk-xxx"
 ```
 
-`mem9_memory` 配置内置的 `Mem9MemorySearch` 与 `Mem9MemoryStore` 工具。若省略该配置，或无法解析 API key，这两个工具不会注册。搜索默认跨 Mem9 长期记忆召回；写入会把内容提交给服务端异步抽取，并附带当前 Kimi Code session id 作为来源信息。
+`mem9_memory` 配置内置的 `Mem9MemorySearch` 与 `Mem9MemoryStore` 工具。若省略该配置但环境变量里有 `MEM9_API_KEY`，Kimi Code 会用默认 Mem9 设置启用这两个工具；若无法解析 API key，这两个工具不会注册。搜索默认跨 Mem9 长期记忆召回；写入会把内容提交给服务端异步抽取，并附带当前 Kimi Code session id 作为来源信息。
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -227,6 +227,12 @@ api_key = "sk-xxx"
 base_url = "https://api.mem9.ai"
 api_key_env_var = "MEM9_API_KEY"
 scan_all = false
+```
+
+使用默认服务时可以完全省略这个配置段：
+
+```bash
+export MEM9_API_KEY=...
 ```
 
 ## `permission`

@@ -64,7 +64,7 @@ Foreground mode blocks the current turn until the command completes or times out
 | `Mem9MemorySearch` | Auto-approved | Search Mem9 long-term memory |
 | `Mem9MemoryStore` | Requires approval | Store content into Mem9 long-term memory |
 
-These tools appear only when `[services.mem9_memory]` is configured and a Mem9 API key is available. `Mem9MemorySearch` accepts `query`, an optional `limit` (1–20, default 5), and an optional `scan_all` flag. Searches are cross-session by default and do not send the current Kimi Code session ID, so memories stored in earlier sessions can be recalled later.
+These tools appear when a Mem9 API key is available. Set `MEM9_API_KEY` in the environment to use the default service, or configure `[services.mem9_memory]` for a custom base URL, env var name, inline key, scan mode, or custom headers. `Mem9MemorySearch` accepts `query`, an optional `limit` (1–20, default 5), and an optional `scan_all` flag. Searches are cross-session by default and do not send the current Kimi Code session ID, so memories stored in earlier sessions can be recalled later.
 
 `Mem9MemoryStore` accepts `content` and submits it for Mem9 server-side smart extraction. Store requests include the current Kimi Code session ID as source metadata, but writes are asynchronous, best-effort, and not guaranteed unique; the Mem9 service handles extraction and de-duplication. Stored content may not be searchable immediately.
 
