@@ -2,7 +2,7 @@
 
 Built-in tools are the tool set provided by Kimi Code CLI alongside its core engine — no MCP server installation required. The Agent automatically selects and calls these tools based on the task at hand during each conversation; users can inspect the details of each tool call through the approval interface.
 
-Compared to MCP tools, built-in tools are managed directly by the runtime, their lifecycle is bound to the session, and no external process is required. Both follow the same unified approval mechanism: **read-only tools** (such as `Read`, `Grep`, `Glob`, `WebSearch`, and `Mem9MemorySearch`) are automatically allowed by default, while **write and execution tools** (such as `Write`, `Edit`, `Bash`, `TaskStop`, and `Mem9MemoryStore`) require user approval by default. In YOLO mode, approval for regular tool calls is skipped; Plan mode exit approval is not affected.
+Compared to MCP tools, built-in tools are managed directly by the runtime, their lifecycle is bound to the session, and no external process is required. Both follow the same unified approval mechanism: **read-only tools** (such as `Read`, `Grep`, `Glob`, `WebSearch`, and `Mem9MemorySearch`) are automatically allowed by default, while most **write and execution tools** (such as `Write`, `Edit`, `Bash`, and `TaskStop`) require user approval by default. `Mem9MemoryStore` is automatically allowed once a Mem9 API key is configured, because enabling the Mem9 service is treated as opt-in to long-term memory read/write. In YOLO mode, approval for regular tool calls is skipped; Plan mode exit approval is not affected.
 
 ## File Tools
 
@@ -62,9 +62,9 @@ Foreground mode blocks the current turn until the command completes or times out
 | Tool | Default Approval | Description |
 | --- | --- | --- |
 | `Mem9MemorySearch` | Auto-approved | Search Mem9 long-term memory |
-| `Mem9MemoryStore` | Requires approval | Store content into Mem9 long-term memory |
+| `Mem9MemoryStore` | Auto-approved when Mem9 is configured | Store content into Mem9 long-term memory |
 
-These tools appear when a Mem9 API key is available. Set `MEM9_API_KEY` in the environment to use the default service, or configure `[services.mem9_memory]` for a custom base URL, env var name, inline key, scan mode, or custom headers. `Mem9MemorySearch` accepts `query`, an optional `limit` (1–20, default 5), and an optional `scan_all` flag. Searches are cross-session by default and do not send the current Kimi Code session ID, so memories stored in earlier sessions can be recalled later.
+These tools appear when a Mem9 API key is available. Set `MEM9_API_KEY` in the environment to use the default service, or configure `[services.mem9_memory]` for a custom base URL, env var name, inline key, scan mode, or custom headers. When these tools are registered, both search and store are auto-approved by default; users who do not want automatic long-term memory writes should leave Mem9 unconfigured or add an explicit deny rule for `Mem9MemoryStore`. `Mem9MemorySearch` accepts `query`, an optional `limit` (1–20, default 5), and an optional `scan_all` flag. Searches are cross-session by default and do not send the current Kimi Code session ID, so memories stored in earlier sessions can be recalled later.
 
 `Mem9MemoryStore` accepts `content` and submits it for Mem9 server-side smart extraction. Store requests include the current Kimi Code session ID as source metadata, but writes are asynchronous, best-effort, and not guaranteed unique; the Mem9 service handles extraction and de-duplication. Stored content may not be searchable immediately.
 
