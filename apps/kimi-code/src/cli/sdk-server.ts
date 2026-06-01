@@ -493,9 +493,16 @@ async function waitForTurnStart(turnStarted: Promise<number>, accepted: Promise<
       reject(new ProtocolError('SERVER_ERROR', 'Timed out waiting for turn.started.'));
     }, TURN_START_TIMEOUT_MS);
   });
+  const acceptedDone = accepted.then(
+    () => {
+      throw new ProtocolError('SERVER_ERROR', 'Prompt resolved before turn.started.');
+    },
+    (error: unknown) => {
+      throw error;
+    },
+  );
   try {
-    await accepted;
-    return await Promise.race([turnStarted, timeoutPromise]);
+    return await Promise.race([turnStarted, acceptedDone, timeoutPromise]);
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
   }
