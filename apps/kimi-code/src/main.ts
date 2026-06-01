@@ -17,6 +17,7 @@ import { createProgram } from './cli/commands';
 import type { CLIOptions } from './cli/options';
 import { OptionConflictError, validateOptions } from './cli/options';
 import { runPrompt } from './cli/run-prompt';
+import { runSdkServer } from './cli/sdk-server';
 import { runShell } from './cli/run-shell';
 import { formatStartupError } from './cli/startup-error';
 import { runPluginNodeEntry } from './cli/sub/plugin-run-node';
@@ -116,6 +117,13 @@ export function main(): void {
     (entry, args) => {
       void runPluginNodeEntry(entry, args).catch(async (error: unknown) => {
         await logStartupFailure('run plugin node entry', error);
+        process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+        process.exit(1);
+      });
+    },
+    () => {
+      void runSdkServer({ version }).catch(async (error: unknown) => {
+        await logStartupFailure('run SDK server', error);
         process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
         process.exit(1);
       });

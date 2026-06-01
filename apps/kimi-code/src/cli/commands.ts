@@ -10,12 +10,14 @@ import { registerExportCommand } from './sub/export';
 export type MainCommandHandler = (opts: CLIOptions) => void;
 export type MigrateCommandHandler = () => void;
 export type PluginNodeRunnerHandler = (entry: string, args: readonly string[]) => void;
+export type SdkServerCommandHandler = () => void;
 
 export function createProgram(
   version: string,
   onMain: MainCommandHandler,
   onMigrate: MigrateCommandHandler,
   onPluginNodeRunner: PluginNodeRunnerHandler = () => {},
+  onSdkServer: SdkServerCommandHandler = () => {},
 ): Command {
   const program = new Command(CLI_COMMAND_NAME)
     .description('The Starting Point for Next-Gen Agents')
@@ -75,6 +77,14 @@ export function createProgram(
 
   registerExportCommand(program);
   registerMigrateCommand(program, onMigrate);
+
+  program
+    .command('sdk-server')
+    .description('Run the headless SDK server.')
+    .requiredOption('--stdio', 'Use line-delimited JSON-RPC over stdio.')
+    .action(() => {
+      onSdkServer();
+    });
 
   program
     .command('__plugin_run_node', { hidden: true })
