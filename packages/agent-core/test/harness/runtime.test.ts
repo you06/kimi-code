@@ -356,6 +356,46 @@ api_key_env_var = "CUSTOM_MEM9_API_KEY"
     );
   });
 
+  it('passes KIMI_CODE_AGENT_ID to the mem9 memory provider', async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'kimi-core-runtime-'));
+    const homeDir = join(tmp, 'home');
+    const workDir = join(tmp, 'work');
+    await mkdir(homeDir, { recursive: true });
+    await mkdir(workDir, { recursive: true });
+    await writeFile(join(homeDir, 'config.toml'), baseModelConfig());
+    vi.stubEnv('MEM9_API_KEY', 'mem9-test-key');
+    vi.stubEnv('KIMI_CODE_AGENT_ID', 'locomo-synthetic-001-default-kimi-code+mem9');
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ memories: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchImpl);
+
+    const [coreRpc, sdkRpc] = createRPC<CoreAPI, SDKAPI>();
+    const core = new KimiCore(coreRpc, { homeDir });
+    const rpc = await sdkRpc({
+      emitEvent: vi.fn(),
+      requestApproval: vi.fn(async (): Promise<ApprovalResponse> => ({ decision: 'rejected' })),
+      requestQuestion: vi.fn(async () => null),
+      toolCall: vi.fn(async () => ({ output: '' })),
+    });
+
+    const created = await rpc.createSession({ id: 'ses_runtime_mem9_agent_id', workDir });
+    const session = core.sessions.get(created.id);
+    await session!.options.toolServices!.mem9Memory!.search({
+      query: 'user lives in',
+      limit: 5,
+    });
+
+    const init = fetchImpl.mock.calls[0]?.[1] as RequestInit;
+    expect(init.headers).toMatchObject({
+      'X-Mnemo-Agent-Id': 'locomo-synthetic-001-default-kimi-code+mem9',
+      'X-API-Key': 'mem9-test-key',
+    });
+  });
+
   it('rejects createSession when shell runtime initialization fails', async () => {
     tmp = await mkdtemp(join(tmpdir(), 'kimi-core-runtime-'));
     const homeDir = join(tmp, 'home');

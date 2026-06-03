@@ -107,6 +107,35 @@ describe('Mem9 memory tools', () => {
     expect(content).toContain('Source session: session-123');
     expect(content).toContain('not immediately searchable');
   });
+
+  it('uses the configured agent id for mem9 headers and store body', async () => {
+    const fetchImpl = vi.fn(async (_input: string | URL, init?: RequestInit) => {
+      expect(init?.headers).toMatchObject({
+        'X-Mnemo-Agent-Id': 'locomo-subject-variant',
+        'X-API-Key': 'sk-test',
+      });
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        agent_id: 'locomo-subject-variant',
+      });
+      return jsonResponse({ status: 'accepted' });
+    });
+    const provider = new Mem9MemoryProvider({
+      apiKey: 'sk-test',
+      agentId: 'locomo-subject-variant',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    const tool = new Mem9MemoryStoreTool(provider, 'session-123');
+
+    const result = await executeTool(tool, {
+      turnId: 't1',
+      toolCallId: 'c-store',
+      args: { content: 'User prefers Python' },
+      signal,
+    });
+
+    expect(result.isError).toBe(false);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
 });
 
 function providerWithResponse(body: unknown): Mem9MemoryProvider {
