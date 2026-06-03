@@ -50,6 +50,13 @@ export interface SessionOptions {
   readonly kimiHomeDir?: string;
   readonly rpc: SDKSessionRPC;
   readonly toolServices?: ToolServices;
+  // Compaction memory exporter shared by every Agent the session
+  // produces. Constructed in core-impl.ts when the Mem9 memory
+  // service is configured (per #mem9-discussion:9dcf4b01 product
+  // rule: compaction export follows Mem9 enablement, no separate
+  // switch). Left undefined → Agent uses the no-op disabled
+  // exporter and the feature stays fully silent.
+  readonly compactionMemoryExporter?: AgentOptions['compactionMemoryExporter'];
   readonly initializeMainAgent?: boolean | undefined;
   readonly providerManager?: ProviderManager | undefined;
   readonly background?: BackgroundConfig | undefined;
@@ -231,6 +238,16 @@ export class Session {
     try {
       await Promise.allSettled(
         Array.from(this.readyAgents(), async (agent) => agent.cron?.stop()),
+      );
+      // Per #mem9-discussion:9dcf4b01 lifecycle lock: object-owned
+      // teardown for the compaction memory exporter — explicit
+      // dispose during session close so long-lived hosts get
+      // deterministic reaper shutdown instead of relying on
+      // setInterval.unref() and process exit. Signal handling
+      // (SIGTERM/SIGINT) remains the CLI's concern and should flow
+      // through this same session-close path.
+      await Promise.allSettled(
+        Array.from(this.agents.values(), async (agent) => agent.dispose()),
       );
       await this.stopBackgroundTasksOnExit();
       await this.flushMetadata();
@@ -481,6 +498,8 @@ export class Session {
       kaos: this.options.kaos.withCwd(cwd),
       sessionId: this.options.id,
       toolServices: this.options.toolServices,
+      compactionMemoryExporter:
+        config.compactionMemoryExporter ?? this.options.compactionMemoryExporter,
       config: this.options.config,
       homedir,
       skills: this.skills,

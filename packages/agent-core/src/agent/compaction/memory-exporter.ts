@@ -373,11 +373,15 @@ export class CompactionMemoryExporter {
       mode: 'smart',
       metadata: job.metadata,
     };
+    // customHeaders spread FIRST so the required auth/identity
+    // headers below win on key collision. Matches the order in
+    // `Mem9MemoryProvider.headers()` — caller-supplied headers must
+    // not be able to override `X-Mnemo-Agent-Id` / `X-API-Key`.
     const headers: Record<string, string> = {
+      ...(this.opts.mem9.customHeaders ?? {}),
       'Content-Type': 'application/json',
       'X-Mnemo-Agent-Id': job.agentId,
       'X-API-Key': this.opts.mem9.apiKey,
-      ...(this.opts.mem9.customHeaders ?? {}),
     };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), STORE_TIMEOUT_MS);

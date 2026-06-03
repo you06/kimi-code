@@ -1,8 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 
+import { join } from 'node:path';
+
+import { CompactionMemoryExporter } from '#/agent/compaction/memory-exporter';
 import { ErrorCodes, KimiError } from '#/errors';
 import { getRootLogger, log } from '#/logging/logger';
+import { DEFAULT_MEM9_BASE_URL } from '#/tools/providers/mem9-memory';
 import { PluginManager } from '#/plugin';
 import { LocalFetchURLProvider } from '#/tools/providers/local-fetch-url';
 import { Mem9MemoryProvider } from '#/tools/providers/mem9-memory';
@@ -212,9 +216,14 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
     // Session ctor attaches its own log sink. If anything in the setup-after-
     // ctor block throws, `session.close()` releases the sink (and mcp).
     const runtime = await this.resolveRuntime(config);
+    const compactionMemoryExporter = createCompactionMemoryExporter(
+      config.services?.mem9Memory,
+      this.homeDir,
+    );
     const session = new Session({
       kaos: (await this.getKaos()).withCwd(workDir),
       toolServices: runtime,
+      compactionMemoryExporter,
       config,
       id,
       homedir: summary.sessionDir,
@@ -300,9 +309,14 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
     const pluginSessionStarts = this.plugins.enabledSessionStarts();
     const mcpConfig = this.mergePluginMcpConfig(withCallerMcp);
     const runtime = await this.resolveRuntime(config);
+    const compactionMemoryExporter = createCompactionMemoryExporter(
+      config.services?.mem9Memory,
+      this.homeDir,
+    );
     const session = new Session({
       kaos: (await this.getKaos()).withCwd(summary.workDir),
       toolServices: runtime,
+      compactionMemoryExporter,
       config,
       id: summary.id,
       homedir: summary.sessionDir,
@@ -911,6 +925,53 @@ function createMem9MemoryProvider(
 
 function resolveMem9AgentId(): string | undefined {
   return nonEmptyString(process.env['KIMI_CODE_AGENT_ID']);
+}
+
+// createCompactionMemoryExporter wires the compaction memory exporter
+// off the same `[services.mem9_memory]` config that gates the Mem9
+// memory tools. Per #mem9-discussion:9dcf4b01 product rule (locked by
+// @tmgg06 on 2026-06-04): compaction export does NOT have a separate
+// switch — it follows whether Mem9 is enabled. When Mem9 is not
+// configured, the no-op disabled exporter is returned, and the
+// feature is fully silent (no queue dir, no log output, no
+// diagnostic events).
+//
+// `KIMI_CODE_HOME` (or `~/.kimi-code` via `kimiHomeDir`) anchors the
+// queue directory; if neither is available, we fall back to the
+// disabled instance because we don't want to silently spill jobs
+// somewhere unexpected.
+function createCompactionMemoryExporter(
+  service: Mem9MemoryServiceConfig | undefined,
+  kimiHomeDir: string | undefined,
+): CompactionMemoryExporter {
+  // Parity with `createMem9MemoryProvider`: the exporter must enable
+  // under exactly the same conditions as the in-band Mem9 tools.
+  // `Mem9MemoryProvider` defaults `baseUrl` to `DEFAULT_MEM9_BASE_URL`
+  // when none is configured, so a `MEM9_API_KEY`-only environment
+  // activates the tools. Without sharing that default here, the
+  // exporter would silently stay disabled in that environment and
+  // violate the locked product rule (#mem9-discussion:9dcf4b01:
+  // "Mem9 配了 → compaction export 自动启用"). @Kaltsit caught this
+  // gap during Phase 2c review.
+  const apiKey = resolveMem9ApiKey(service);
+  if (apiKey === undefined || kimiHomeDir === undefined) {
+    return CompactionMemoryExporter.disabled();
+  }
+  const baseUrl =
+    nonEmptyString(service?.baseUrl) ??
+    nonEmptyString(process.env['MEM9_BASE_URL']) ??
+    DEFAULT_MEM9_BASE_URL;
+  return new CompactionMemoryExporter({
+    enabled: true,
+    queueDir: join(kimiHomeDir, 'compaction-memory-export'),
+    mem9: {
+      baseUrl,
+      apiKey,
+      agentId: resolveMem9AgentId() ?? 'kimi-code',
+      customHeaders: service?.customHeaders,
+    },
+    logger: log,
+  });
 }
 
 function resolveMem9ApiKey(service: Mem9MemoryServiceConfig | undefined): string | undefined {
