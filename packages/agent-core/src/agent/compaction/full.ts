@@ -69,7 +69,7 @@ export class FullCompaction {
   } | null = null;
   protected _compactedHistory: CompactedHistory[] = [];
   protected readonly strategy: CompactionStrategy;
-  protected readonly memoryExporter: CompactionMemoryExporter;
+  readonly memoryExporter: CompactionMemoryExporter;
   protected readonly sessionId: string | undefined;
 
   constructor(

@@ -6,8 +6,12 @@
  * revision can be contained here.
  */
 
-const DEFAULT_BASE_URL = 'https://api.mem9.ai';
-const DEFAULT_AGENT_ID = 'kimi-code';
+export const DEFAULT_MEM9_BASE_URL = 'https://api.mem9.ai';
+export const DEFAULT_MEM9_AGENT_ID = 'kimi-code';
+// Kept as locals so existing references in this file stay terse;
+// outside callers should import the exported constants.
+const DEFAULT_BASE_URL = DEFAULT_MEM9_BASE_URL;
+const DEFAULT_AGENT_ID = DEFAULT_MEM9_AGENT_ID;
 const SEARCH_TIMEOUT_MS = 30_000;
 const STORE_TIMEOUT_MS = 120_000;
 

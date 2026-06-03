@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { CompactionMemoryExporter } from '#/agent/compaction/memory-exporter';
 import { ErrorCodes, KimiError } from '#/errors';
 import { getRootLogger, log } from '#/logging/logger';
+import { DEFAULT_MEM9_BASE_URL } from '#/tools/providers/mem9-memory';
 import { PluginManager } from '#/plugin';
 import { LocalFetchURLProvider } from '#/tools/providers/local-fetch-url';
 import { Mem9MemoryProvider } from '#/tools/providers/mem9-memory';
@@ -829,11 +830,23 @@ function createCompactionMemoryExporter(
   service: Mem9MemoryServiceConfig | undefined,
   kimiHomeDir: string | undefined,
 ): CompactionMemoryExporter {
+  // Parity with `createMem9MemoryProvider`: the exporter must enable
+  // under exactly the same conditions as the in-band Mem9 tools.
+  // `Mem9MemoryProvider` defaults `baseUrl` to `DEFAULT_MEM9_BASE_URL`
+  // when none is configured, so a `MEM9_API_KEY`-only environment
+  // activates the tools. Without sharing that default here, the
+  // exporter would silently stay disabled in that environment and
+  // violate the locked product rule (#mem9-discussion:9dcf4b01:
+  // "Mem9 配了 → compaction export 自动启用"). @Kaltsit caught this
+  // gap during Phase 2c review.
   const apiKey = resolveMem9ApiKey(service);
-  const baseUrl = nonEmptyString(service?.baseUrl) ?? nonEmptyString(process.env['MEM9_BASE_URL']);
-  if (apiKey === undefined || baseUrl === undefined || kimiHomeDir === undefined) {
+  if (apiKey === undefined || kimiHomeDir === undefined) {
     return CompactionMemoryExporter.disabled();
   }
+  const baseUrl =
+    nonEmptyString(service?.baseUrl) ??
+    nonEmptyString(process.env['MEM9_BASE_URL']) ??
+    DEFAULT_MEM9_BASE_URL;
   return new CompactionMemoryExporter({
     enabled: true,
     queueDir: join(kimiHomeDir, 'compaction-memory-export'),
