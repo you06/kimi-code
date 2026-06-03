@@ -92,6 +92,7 @@ export interface TestAgentOptions {
   readonly kaos?: Kaos | undefined;
   readonly runtime?: ToolServices | undefined;
   readonly compactionStrategy?: CompactionStrategy | undefined;
+  readonly compactionMemoryExporter?: AgentOptions['compactionMemoryExporter'];
   readonly microCompaction?: AgentOptions['microCompaction'];
   readonly generate?: GenerateFn | undefined;
   readonly hookEngine?: AgentOptions['hookEngine'];
@@ -185,6 +186,7 @@ export class AgentTestContext {
       persistence,
       generate: options.generate ?? this.scriptedGenerate.generate,
       compactionStrategy: options.compactionStrategy,
+      compactionMemoryExporter: options.compactionMemoryExporter,
       microCompaction: options.microCompaction,
       modelProvider: providerManager,
       subagentHost: options.subagentHost,

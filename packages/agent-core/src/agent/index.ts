@@ -77,6 +77,11 @@ export interface AgentOptions {
   readonly generate?: typeof generate;
   readonly toolServices?: ToolServices;
   readonly compactionStrategy?: CompactionStrategy;
+  // Compaction memory exporter. Hosts wire this when they want
+  // compaction-driven writes to mem9 (see core-impl.ts). Left undefined,
+  // the FullCompaction module uses a no-op disabled exporter and the
+  // feature stays off.
+  readonly compactionMemoryExporter?: import('./compaction/memory-exporter').CompactionMemoryExporter;
   readonly microCompaction?: Partial<MicroCompactionConfig>;
   readonly modelProvider?: ModelProvider | undefined;
   readonly subagentHost?: SessionSubagentHost | undefined;
@@ -155,7 +160,10 @@ export class Agent {
             })
           : undefined),
     );
-    this.fullCompaction = new FullCompaction(this, options.compactionStrategy);
+    this.fullCompaction = new FullCompaction(this, options.compactionStrategy, {
+      sessionId: options.sessionId,
+      memoryExporter: options.compactionMemoryExporter,
+    });
     this.microCompaction = new MicroCompaction(this, options.microCompaction);
     this.context = new ContextMemory(this);
     this.config = new ConfigState(this);
