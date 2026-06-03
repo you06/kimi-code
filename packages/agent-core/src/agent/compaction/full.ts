@@ -104,6 +104,16 @@ export class FullCompaction {
     return this.compacting !== null;
   }
 
+  // dispose tears down lifetime-bound resources held by the compaction
+  // module — currently only the memory exporter's reaper. Called by
+  // Agent.dispose() during session/agent shutdown so long-lived host
+  // processes (SDK servers, embedded harnesses) get deterministic
+  // cleanup without relying on `unref()` + process exit. Safe to call
+  // multiple times.
+  async dispose(): Promise<void> {
+    await this.memoryExporter.stopReaper();
+  }
+
   get compactedHistory(): readonly CompactedHistory[] {
     return this._compactedHistory;
   }

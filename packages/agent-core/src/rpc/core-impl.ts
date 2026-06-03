@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 
+import { join } from 'node:path';
+
+import { CompactionMemoryExporter } from '#/agent/compaction/memory-exporter';
 import { ErrorCodes, KimiError } from '#/errors';
 import { getRootLogger, log } from '#/logging/logger';
 import { PluginManager } from '#/plugin';
@@ -195,9 +198,14 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
     // Session ctor attaches its own log sink. If anything in the setup-after-
     // ctor block throws, `session.close()` releases the sink (and mcp).
     const runtime = await this.resolveRuntime(config);
+    const compactionMemoryExporter = createCompactionMemoryExporter(
+      config.services?.mem9Memory,
+      this.homeDir,
+    );
     const session = new Session({
       kaos: (await this.kaos).withCwd(workDir),
       toolServices: runtime,
+      compactionMemoryExporter,
       config,
       id,
       homedir: summary.sessionDir,
@@ -281,9 +289,14 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
     const pluginSessionStarts = this.plugins.enabledSessionStarts();
     const mcpConfig = this.mergePluginMcpConfig(baseMcpConfig);
     const runtime = await this.resolveRuntime(config);
+    const compactionMemoryExporter = createCompactionMemoryExporter(
+      config.services?.mem9Memory,
+      this.homeDir,
+    );
     const session = new Session({
       kaos: (await this.kaos).withCwd(summary.workDir),
       toolServices: runtime,
+      compactionMemoryExporter,
       config,
       id: summary.id,
       homedir: summary.sessionDir,
@@ -797,6 +810,41 @@ function createMem9MemoryProvider(
 
 function resolveMem9AgentId(): string | undefined {
   return nonEmptyString(process.env['KIMI_CODE_AGENT_ID']);
+}
+
+// createCompactionMemoryExporter wires the compaction memory exporter
+// off the same `[services.mem9_memory]` config that gates the Mem9
+// memory tools. Per #mem9-discussion:9dcf4b01 product rule (locked by
+// @tmgg06 on 2026-06-04): compaction export does NOT have a separate
+// switch — it follows whether Mem9 is enabled. When Mem9 is not
+// configured, the no-op disabled exporter is returned, and the
+// feature is fully silent (no queue dir, no log output, no
+// diagnostic events).
+//
+// `KIMI_CODE_HOME` (or `~/.kimi-code` via `kimiHomeDir`) anchors the
+// queue directory; if neither is available, we fall back to the
+// disabled instance because we don't want to silently spill jobs
+// somewhere unexpected.
+function createCompactionMemoryExporter(
+  service: Mem9MemoryServiceConfig | undefined,
+  kimiHomeDir: string | undefined,
+): CompactionMemoryExporter {
+  const apiKey = resolveMem9ApiKey(service);
+  const baseUrl = nonEmptyString(service?.baseUrl) ?? nonEmptyString(process.env['MEM9_BASE_URL']);
+  if (apiKey === undefined || baseUrl === undefined || kimiHomeDir === undefined) {
+    return CompactionMemoryExporter.disabled();
+  }
+  return new CompactionMemoryExporter({
+    enabled: true,
+    queueDir: join(kimiHomeDir, 'compaction-memory-export'),
+    mem9: {
+      baseUrl,
+      apiKey,
+      agentId: resolveMem9AgentId() ?? 'kimi-code',
+      customHeaders: service?.customHeaders,
+    },
+    logger: log,
+  });
 }
 
 function resolveMem9ApiKey(service: Mem9MemoryServiceConfig | undefined): string | undefined {

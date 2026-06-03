@@ -182,6 +182,18 @@ export class Agent {
     this.replayBuilder = new ReplayBuilder(this);
   }
 
+  // dispose tears down lifetime-bound subsystems held by this agent
+  // — currently the compaction memory exporter's reaper, plumbed via
+  // FullCompaction.dispose(). Called from Session.close() so SDK
+  // servers and embedded harnesses get deterministic cleanup without
+  // relying on `setInterval.unref()` and process exit. Safe to call
+  // multiple times. Other agent-scoped subsystems with their own
+  // lifecycle (cron, background, mcp) keep their existing teardown
+  // paths.
+  async dispose(): Promise<void> {
+    await this.fullCompaction.dispose();
+  }
+
   get generate(): typeof generate {
     return async (provider, systemPrompt, tools, history, callbacks, options) => {
       if (options?.auth !== undefined) {
