@@ -91,7 +91,7 @@ You can also return a JSON object via stdout to block:
 ```
 
 ::: info Which events support blocking?
-Only **blockable events** (`PreToolUse`, `Stop`, `UserPromptSubmit`) have return values that affect the main flow. All other events are **observation-only events** — they fire and forget; the main flow is unaffected regardless of what the script returns.
+Only **blockable events** (`PreToolUse`, `Stop`, `UserPromptSubmit`) have return values that affect the main flow. All other events are **observation-only events** — they fire and forget; the main flow is unaffected regardless of what the script returns. `PreCompact` is invoked with `trigger`, not `triggerBlock`, and its return value is completely ignored.
 :::
 
 ## Event Reference
@@ -110,8 +110,8 @@ Only **blockable events** (`PreToolUse`, `Stop`, `UserPromptSubmit`) have return
 | `SubagentStart` | Sub-agent name | — | Triggered before a sub-agent starts running |
 | `SubagentStop` | Sub-agent name | — | Triggered after a sub-agent completes successfully (observation only) |
 | `StopFailure` | Error type | — | Triggered after the current turn fails due to an error (observation only) |
-| `PreCompact` | `manual` or `auto` | — | Triggered before context compaction begins; return values are completely ignored |
-| `PostCompact` | `manual` or `auto` | — | Triggered after context compaction completes (observation only) |
+| `PreCompact` | `manual` or `auto` | — | Triggered before context compaction begins. Payload includes `trigger` and `token_count`; return values are completely ignored |
+| `PostCompact` | `manual` or `auto` | — | Triggered after context compaction is written (observation only). Payload includes `trigger`, `summary`, `compacted_count`, `tokens_before`, `tokens_after`, `compacted_messages`, and deprecated alias `estimated_token_count`; `compacted_messages` is the raw `[{role, content}]` prefix replaced by `summary` |
 | `Notification` | Notification type (e.g. `task.completed`) | — | Triggered when a background task status changes (observation only) |
 
 ## Example: Blocking Dangerous Shell Commands

@@ -91,7 +91,7 @@ Hook 命令的工作目录是当前会话的项目目录。非 Windows 平台上
 ```
 
 ::: info 哪些事件支持阻断？
-只有**可阻断事件**（`PreToolUse`、`Stop`、`UserPromptSubmit`）的返回值会影响主流程。其余事件属于**观察型事件**——触发后即发即忘，不管脚本返回什么，主流程都不会改变。
+只有**可阻断事件**（`PreToolUse`、`Stop`、`UserPromptSubmit`）的返回值会影响主流程。其余事件属于**观察型事件**——触发后即发即忘，不管脚本返回什么，主流程都不会改变。`PreCompact` 使用 `trigger` 调用，而不是 `triggerBlock`，返回值会被完全忽略。
 :::
 
 ## 事件一览
@@ -110,8 +110,8 @@ Hook 命令的工作目录是当前会话的项目目录。非 Windows 平台上
 | `SubagentStart` | 子 Agent 名称 | — | 子 Agent 开始运行前触发 |
 | `SubagentStop` | 子 Agent 名称 | — | 子 Agent 成功完成后触发（观察用） |
 | `StopFailure` | 错误类型 | — | 本轮因错误失败后触发（观察用） |
-| `PreCompact` | `manual` 或 `auto` | — | 上下文压缩开始前触发；返回值被完全忽略 |
-| `PostCompact` | `manual` 或 `auto` | — | 上下文压缩完成后触发（观察用） |
+| `PreCompact` | `manual` 或 `auto` | — | 上下文压缩开始前触发。payload 包含 `trigger` 和 `token_count`；返回值被完全忽略 |
+| `PostCompact` | `manual` 或 `auto` | — | 上下文压缩写入后触发（观察用）。payload 包含 `trigger`、`summary`、`compacted_count`、`tokens_before`、`tokens_after`、`compacted_messages` 和废弃别名 `estimated_token_count`；`compacted_messages` 是被 `summary` 替换掉的原始 `[{role, content}]` 前缀 |
 | `Notification` | 通知类型（如 `task.completed`） | — | 后台任务状态变化时触发（观察用） |
 
 ## 示例：阻断危险 Shell 命令

@@ -39,6 +39,15 @@ export interface CompactionResult {
   readonly tokensAfter: number;
 }
 
+// Compact, wire-friendly projection of one compacted message. Just role
+// + flattened text content so SDK consumers (e.g. LoCoMo runner's
+// compaction-exporter variant) and out-of-process hooks can consume the
+// raw prefix without depending on kosong's internal Message shape.
+export interface CompactedMessageView {
+  readonly role: 'system' | 'user' | 'assistant' | 'tool';
+  readonly content: string;
+}
+
 export type TurnEndReason = 'completed' | 'cancelled' | 'failed';
 
 export interface AgentStatusUpdatedEvent {
@@ -245,6 +254,13 @@ export interface CompactionCancelledEvent {
 export interface CompactionCompletedEvent {
   readonly type: 'compaction.completed';
   readonly result: CompactionResult;
+  // Raw user/assistant/tool prefix that was just compacted. The
+  // slice is taken from the *final* result-driven compacted count, so
+  // subscribers always see the same prefix the summary actually
+  // replaces. Currently always emitted (possibly as `[]` if the
+  // compacted count is 0); optional at the type level only so older
+  // SDK consumers that pre-date this field still type-check.
+  readonly compactedMessages?: readonly CompactedMessageView[];
 }
 
 export interface BackgroundTaskStartedEvent {
