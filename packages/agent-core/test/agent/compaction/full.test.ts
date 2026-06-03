@@ -530,6 +530,35 @@ describe('FullCompaction', () => {
     );
   });
 
+  it('Agent.dispose() stops the wired compaction memory exporter reaper', async () => {
+    // Per #mem9-discussion:9dcf4b01 lifecycle lock: object-owned
+    // teardown of the exporter. Long-lived SDK hosts call
+    // session.close() which now chains through agent.dispose() →
+    // fullCompaction.dispose() → exporter.stopReaper(), so reapers
+    // are released deterministically without relying on
+    // setInterval.unref() and process exit.
+    const queueDir = mkdtempSync(join(tmpdir(), 'kimi-compact-dispose-'));
+    const exporter = new CompactionMemoryExporter({
+      enabled: true,
+      queueDir,
+      mem9: {
+        baseUrl: 'http://mem9.test',
+        apiKey: 'test',
+        agentId: 'kimi-code',
+      },
+      manualTick: true,
+    });
+    const stopSpy = vi.spyOn(exporter, 'stopReaper');
+    const ctx = testAgent({ compactionMemoryExporter: exporter });
+    expect(stopSpy).not.toHaveBeenCalled();
+    await ctx.agent.dispose();
+    expect(stopSpy).toHaveBeenCalledTimes(1);
+    // Idempotent: a second dispose() is a no-op aside from re-entering
+    // the already-stopped state, and crucially must not throw.
+    await ctx.agent.dispose();
+    expect(stopSpy).toHaveBeenCalledTimes(2);
+  });
+
   it('cancels while waiting for a PreCompact hook', async () => {
     let preCompactSignal: AbortSignal | undefined;
     const trigger = vi.fn(async (_event: string, args?: HookEngineTriggerArgs) => {

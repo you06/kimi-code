@@ -148,7 +148,7 @@ max_context_size = 100000
     vi.stubEnv('MEM9_API_KEY', 'mem9-test-key');
 
     const [coreRpc, sdkRpc] = createRPC<CoreAPI, SDKAPI>();
-    void new KimiCore(coreRpc, { homeDir });
+    const core = new KimiCore(coreRpc, { homeDir });
     const rpc = await sdkRpc({
       emitEvent: vi.fn(),
       requestApproval: vi.fn(async (): Promise<ApprovalResponse> => ({ decision: 'rejected' })),
@@ -162,6 +162,14 @@ max_context_size = 100000
     expect(tools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining(['Mem9MemorySearch', 'Mem9MemoryStore']),
     );
+    // Compaction memory exporter must enable under exactly the same
+    // conditions as the in-band Mem9 tools — `MEM9_API_KEY` alone
+    // is enough (the default base URL `https://api.mem9.ai` provides
+    // the URL). @Kaltsit caught a regression on this in Phase 2c
+    // review (#mem9-discussion:9dcf4b01); guard it here.
+    const session = core.sessions.get(created.id);
+    const mainAgent = session?.agents.get('main');
+    expect(mainAgent?.fullCompaction.memoryExporter.enabled).toBe(true);
   });
 
   it('falls back to default MEM9_API_KEY env when a configured mem9 env var is unset', async () => {
