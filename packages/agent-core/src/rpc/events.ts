@@ -241,11 +241,12 @@ export interface CompactionCancelledEvent {
 export interface CompactionCompletedEvent {
   readonly type: 'compaction.completed';
   readonly result: CompactionResult;
-  // Raw user/assistant/tool prefix that was just compacted. Present
-  // when the agent has any history; absent only on the degenerate
-  // empty-history case. Slice is taken from the *final* result-driven
-  // compacted count, so subscribers always see the same prefix the
-  // summary actually replaces.
+  // Raw user/assistant/tool prefix that was just compacted. The
+  // slice is taken from the *final* result-driven compacted count, so
+  // subscribers always see the same prefix the summary actually
+  // replaces. Currently always emitted (possibly as `[]` if the
+  // compacted count is 0); optional at the type level only so older
+  // SDK consumers that pre-date this field still type-check.
   readonly compactedMessages?: readonly CompactedMessageView[];
 }
 
