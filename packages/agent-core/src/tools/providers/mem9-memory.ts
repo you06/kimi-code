@@ -7,7 +7,7 @@
  */
 
 const DEFAULT_BASE_URL = 'https://api.mem9.ai';
-const AGENT_ID = 'kimi-code';
+const DEFAULT_AGENT_ID = 'kimi-code';
 const SEARCH_TIMEOUT_MS = 30_000;
 const STORE_TIMEOUT_MS = 120_000;
 
@@ -36,6 +36,7 @@ export interface Mem9MemoryStoreResult {
 export interface Mem9MemoryProviderOptions {
   readonly baseUrl?: string;
   readonly apiKey: string;
+  readonly agentId?: string;
   readonly scanAll?: boolean;
   readonly customHeaders?: Record<string, string>;
   readonly fetchImpl?: typeof fetch;
@@ -73,6 +74,7 @@ interface RawStoreResponse {
 export class Mem9MemoryProvider {
   private readonly baseUrl: string;
   private readonly apiKey: string;
+  private readonly agentId: string;
   private readonly scanAll: boolean;
   private readonly customHeaders: Record<string, string>;
   private readonly fetchImpl: typeof fetch;
@@ -80,6 +82,7 @@ export class Mem9MemoryProvider {
   constructor(options: Mem9MemoryProviderOptions) {
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
     this.apiKey = options.apiKey;
+    this.agentId = normalizeAgentId(options.agentId) ?? DEFAULT_AGENT_ID;
     this.scanAll = options.scanAll ?? false;
     this.customHeaders = options.customHeaders ?? {};
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
@@ -133,7 +136,7 @@ export class Mem9MemoryProvider {
   async store(options: StoreOptions): Promise<Mem9MemoryStoreResult> {
     const body: Record<string, unknown> = {
       messages: [{ role: 'user', content: options.content }],
-      agent_id: AGENT_ID,
+      agent_id: this.agentId,
       mode: 'smart',
     };
     if (options.sessionId !== undefined && options.sessionId.length > 0) {
@@ -171,7 +174,7 @@ export class Mem9MemoryProvider {
   private headers(): Record<string, string> {
     return {
       ...this.customHeaders,
-      'X-Mnemo-Agent-Id': AGENT_ID,
+      'X-Mnemo-Agent-Id': this.agentId,
       'X-API-Key': this.apiKey,
     };
   }
@@ -222,6 +225,13 @@ async function safeReadText(response: Response): Promise<string> {
   } catch {
     return '';
   }
+}
+
+function normalizeAgentId(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (trimmed === undefined || trimmed.length === 0) return undefined;
+  if (/[\r\n]/.test(trimmed)) return undefined;
+  return trimmed;
 }
 
 function normalizeMemory(raw: unknown): Mem9MemoryResult | undefined {

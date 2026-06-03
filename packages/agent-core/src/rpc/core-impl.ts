@@ -789,9 +789,14 @@ function createMem9MemoryProvider(
   return new Mem9MemoryProvider({
     baseUrl: service?.baseUrl,
     apiKey,
+    agentId: resolveMem9AgentId(),
     scanAll: service?.scanAll,
     customHeaders: service?.customHeaders,
   });
+}
+
+function resolveMem9AgentId(): string | undefined {
+  return nonEmptyString(process.env['KIMI_CODE_AGENT_ID']);
 }
 
 function resolveMem9ApiKey(service: Mem9MemoryServiceConfig | undefined): string | undefined {
