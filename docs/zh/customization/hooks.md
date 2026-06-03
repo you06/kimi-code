@@ -95,7 +95,7 @@ Hook 命令的退出码和 stdout 会被解释为以下结果：
 | `SubagentStart` | 子 Agent 名称 | `agent_name`、`prompt` | 子 Agent 配置完成、真正开始运行前触发；`prompt` 被截断至前 500 个字符 |
 | `SubagentStop` | 子 Agent 名称 | `agent_name`、`response` | 子 Agent 成功完成后异步触发，失败时不触发；`response` 被截断至前 500 个字符 |
 | `PreCompact` | `manual` 或 `auto` | `trigger`、`token_count` | 上下文压缩真正开始前触发；此事件使用 `trigger`（非 `triggerBlock`）调用，返回值被完全忽略，阻断决策不会被读取 |
-| `PostCompact` | `manual` 或 `auto` | `trigger`、`estimated_token_count` | 上下文压缩成功写入后异步触发；阻断结果不会改变主流程 |
+| `PostCompact` | `manual` 或 `auto` | `trigger`、`summary`、`compacted_count`、`tokens_before`、`tokens_after`、`compacted_messages`、`estimated_token_count`（`tokens_after` 的废弃别名） | 上下文压缩成功写入后异步触发。`compacted_messages` 是被 `summary` 替换掉的原始 `[{role, content}]` 前缀。`tokens_after` 是压缩之后整个上下文的估算 token 数（`summary` + 保留的最近消息），不是被压缩前缀本身的大小。阻断结果不会改变主流程 |
 | `Notification` | 通知类型 | `sink`、`notification_type`、`title`、`body`、`severity`、`source_kind`、`source_id` | 当前在后台子 Agent 结果写入上下文时触发；`notification_type` 取值为 `task.completed`、`task.failed`、`task.killed` 或 `task.lost`，sink 为 `context` |
 
 `UserPromptSubmit` 的返回文本会被包裹成一条 hook 结果：

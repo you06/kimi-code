@@ -29,6 +29,7 @@ import {
   applyCompletionBudget,
   resolveCompletionBudget,
 } from '../../utils/completion-budget';
+import type { CompactedMessageView } from '../../rpc/events';
 import compactionInstructionTemplate from './compaction-instruction.md';
 import { renderMessagesToText } from './render-messages';
 import type { CompactionBeginData, CompactionResult } from './types';
@@ -329,10 +330,21 @@ export class FullCompaction {
         retry_count: retryCount,
         ...usage,
       });
+      // Take the prefix slice from the *final* result-driven count so
+      // event subscribers and PostCompact hooks see exactly what the
+      // summary replaces (the count may have shrunk during overflow
+      // retries — `reduceCompactOnOverflow`).
+      const compactedMessages = projectCompactedMessages(
+        originalHistory.slice(0, result.compactedCount),
+      );
       this.markCompleted();
-      this.agent.emitEvent({ type: 'compaction.completed', result });
+      this.agent.emitEvent({
+        type: 'compaction.completed',
+        result,
+        compactedMessages,
+      });
       this.agent.context.applyCompaction(result);
-      this.triggerPostCompactHook(data, result);
+      this.triggerPostCompactHook(data, result, compactedMessages);
     } catch (error) {
       if (!isAbortError(error)) {
         const active = this.compacting;
@@ -387,12 +399,21 @@ export class FullCompaction {
   private triggerPostCompactHook(
     data: Readonly<CompactionBeginData>,
     result: CompactionResult,
+    compactedMessages: readonly CompactedMessageView[],
   ): void {
     void this.agent.hooks?.fireAndForgetTrigger('PostCompact', {
       matcherValue: data.source,
       inputData: {
         trigger: data.source,
+        summary: result.summary,
+        compactedCount: result.compactedCount,
+        tokensBefore: result.tokensBefore,
+        tokensAfter: result.tokensAfter,
+        // DEPRECATED: kept in lockstep with `tokensAfter` so existing
+        // hook scripts that read `estimatedTokenCount` keep working.
+        // Remove once downstream consumers have migrated.
         estimatedTokenCount: result.tokensAfter,
+        compactedMessages,
       },
     });
   }
@@ -414,6 +435,26 @@ function extractCompactionSummary(response: GenerateResult): string {
 
 export const COMPACTION_INSTRUCTION = (customInstruction = ''): string =>
   renderPrompt(compactionInstructionTemplate, { customInstruction });
+
+// projectCompactedMessages flattens kosong Message objects into the
+// wire-friendly {role, content} shape SDK subscribers consume. Text
+// parts are concatenated with newlines; `think` parts (agent's
+// internal reasoning) are deliberately dropped — they are not meant
+// to be persisted as memory or replayed by benchmark drivers.
+// Non-text content parts (image / audio / video URLs) are also
+// skipped because the wire shape is text-only on purpose; richer
+// projections can be added later as separate fields.
+function projectCompactedMessages(
+  messages: readonly Message[],
+): CompactedMessageView[] {
+  return messages.map((m) => {
+    const text = m.content
+      .filter((part) => part.type === 'text')
+      .map((part) => (part as { type: 'text'; text: string }).text)
+      .join('\n');
+    return { role: m.role, content: text };
+  });
+}
 
 function compactionTelemetryTrigger(
   trigger: CompactionBeginData['source'] | undefined,
