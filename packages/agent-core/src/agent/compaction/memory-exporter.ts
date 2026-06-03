@@ -34,6 +34,7 @@ import {
   mkdirSync,
   openSync,
   promises as fs,
+  readFileSync,
   readdirSync,
   renameSync,
   unlinkSync,
@@ -272,7 +273,7 @@ export class CompactionMemoryExporter {
       const fullPath = join(this.opts.queueDir, name);
       let raw: string;
       try {
-        raw = require('node:fs').readFileSync(fullPath, 'utf-8');
+        raw = readFileSync(fullPath, 'utf-8');
       } catch {
         continue;
       }
