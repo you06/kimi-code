@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentOptions } from '../../../src/agent';
 import { DefaultCompactionStrategy, type CompactionStrategy } from '../../../src/agent/compaction';
+import { CompactionMemoryExporter } from '../../../src/agent/compaction/memory-exporter';
 import { FLAG_DEFINITIONS, MASTER_ENV } from '../../../src/flags';
 import { HookEngine, type HookEngineTriggerArgs } from '../../../src/session/hooks';
 import { estimateTokensForMessages } from '../../../src/utils/tokens';
@@ -468,6 +469,65 @@ describe('FullCompaction', () => {
         expect.objectContaining({ role: 'assistant', content: 'old assistant one' }),
       ]),
     });
+  });
+
+  it('compaction-memory-exporter sees raw prefix + metadata and POSTs to mem9 with ingest_source', async () => {
+    // End-to-end regression for #mem9-discussion:9dcf4b01 Phase 2b:
+    // a successful compaction must enqueue + ship the raw prefix to a
+    // configured mem9 exporter with metadata.ingest_source set.
+    const captured: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      const body = init?.body === undefined ? {} : JSON.parse(String(init.body));
+      captured.push({ url, body });
+      return new Response(JSON.stringify({ status: 'ok' }), { status: 200 });
+    });
+    const queueDir = mkdtempSync(join(tmpdir(), 'kimi-compact-export-e2e-'));
+    const exporter = new CompactionMemoryExporter({
+      enabled: true,
+      queueDir,
+      mem9: {
+        baseUrl: 'http://mem9.test',
+        apiKey: 'e2e-key',
+        agentId: 'kimi-code',
+      },
+      manualTick: true,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+    const ctx = testAgent({ compactionMemoryExporter: exporter });
+    ctx.configure({
+      provider: CATALOGUED_PROVIDER,
+      modelCapabilities: CATALOGUED_MODEL_CAPABILITIES,
+    });
+    ctx.appendExchange(1, 'user fact A', 'assistant reply A', 20);
+    ctx.appendExchange(2, 'user fact B', 'assistant reply B', 40);
+    ctx.appendExchange(3, 'recent user', 'recent assistant', 120);
+    const compacted = ctx.once('context.apply_compaction');
+    ctx.mockNextResponse({ type: 'text', text: 'Compacted summary.' });
+    ctx.agent.fullCompaction.begin({ source: 'auto', instruction: undefined });
+    await compacted;
+    // Drain the queue (manualTick mode).
+    await exporter.tick();
+    await exporter.stopReaper();
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.url).toBe('http://mem9.test/v1alpha2/mem9s/memories');
+    const body = captured[0]!.body;
+    expect(body).toMatchObject({
+      agent_id: 'kimi-code',
+      mode: 'smart',
+      metadata: {
+        ingest_source: 'kimi-code-compaction',
+        compaction_trigger: 'auto',
+      },
+    });
+    // The raw user/assistant prefix is forwarded — not the summary.
+    expect(body['messages']).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: 'user', content: 'user fact A' }),
+        expect.objectContaining({ role: 'assistant', content: 'assistant reply A' }),
+      ]),
+    );
   });
 
   it('cancels while waiting for a PreCompact hook', async () => {
