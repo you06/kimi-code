@@ -31,6 +31,10 @@ import {
 } from '../../utils/completion-budget';
 import type { CompactedMessageView } from '../../rpc/events';
 import compactionInstructionTemplate from './compaction-instruction.md';
+import {
+  CompactionMemoryExporter,
+  type CompactionExportDiagnosticEvent,
+} from './memory-exporter';
 import { renderMessagesToText } from './render-messages';
 import type { CompactionBeginData, CompactionResult } from './types';
 import {
@@ -65,10 +69,13 @@ export class FullCompaction {
   } | null = null;
   protected _compactedHistory: CompactedHistory[] = [];
   protected readonly strategy: CompactionStrategy;
+  protected readonly memoryExporter: CompactionMemoryExporter;
+  protected readonly sessionId: string | undefined;
 
   constructor(
     protected readonly agent: Agent,
     strategy?: CompactionStrategy,
+    options?: { sessionId?: string; memoryExporter?: CompactionMemoryExporter },
   ) {
     this.strategy =
       strategy ??
@@ -81,6 +88,16 @@ export class FullCompaction {
             DEFAULT_COMPACTION_CONFIG.reservedContextSize,
         }
       );
+    this.sessionId = options?.sessionId;
+    // When the host hasn't wired an exporter (default), use the
+    // no-op disabled instance. Hosts that want compaction memory
+    // export to mem9 pass in a configured CompactionMemoryExporter
+    // (see core-impl.ts / SDK harness). The exporter eagerly starts
+    // its reaper here so any `.processing.*` jobs left behind by a
+    // crashed previous process are reclaimed at startup before the
+    // first new compaction enqueues anything.
+    this.memoryExporter = options?.memoryExporter ?? CompactionMemoryExporter.disabled();
+    this.memoryExporter.startReaper();
   }
 
   get isCompacting(): boolean {
@@ -334,9 +351,8 @@ export class FullCompaction {
       // event subscribers and PostCompact hooks see exactly what the
       // summary replaces (the count may have shrunk during overflow
       // retries — `reduceCompactOnOverflow`).
-      const compactedMessages = projectCompactedMessages(
-        originalHistory.slice(0, result.compactedCount),
-      );
+      const compactedPrefix = originalHistory.slice(0, result.compactedCount);
+      const compactedMessages = projectCompactedMessages(compactedPrefix);
       this.markCompleted();
       this.agent.emitEvent({
         type: 'compaction.completed',
@@ -344,6 +360,24 @@ export class FullCompaction {
         compactedMessages,
       });
       this.agent.context.applyCompaction(result);
+      // Memory export runs *after* the compaction is committed to
+      // context. Enqueue is durable (writes a local file) and
+      // non-throwing; the network POST to mem9 happens later in the
+      // exporter's reaper. Failures don't fall through into the
+      // compaction state machine.
+      await this.memoryExporter.enqueue({
+        sessionId: this.sessionId,
+        agentId: resolveAgentIdForExport(this.agent),
+        summary: result.summary,
+        compactedMessages,
+        metadata: {
+          ingest_source: 'kimi-code-compaction',
+          session_id: this.sessionId,
+          tokens_before: result.tokensBefore,
+          tokens_after: result.tokensAfter,
+          compaction_trigger: data.source,
+        },
+      });
       this.triggerPostCompactHook(data, result, compactedMessages);
     } catch (error) {
       if (!isAbortError(error)) {
@@ -435,6 +469,19 @@ function extractCompactionSummary(response: GenerateResult): string {
 
 export const COMPACTION_INSTRUCTION = (customInstruction = ''): string =>
   renderPrompt(compactionInstructionTemplate, { customInstruction });
+
+// resolveAgentIdForExport returns the agent id used in the
+// compaction memory export POST body and `X-Mnemo-Agent-Id` header.
+// Mirrors how Mem9MemoryProvider resolves its own id: read
+// `KIMI_CODE_AGENT_ID` (which carries variant / benchmark namespace
+// tags like `locomo-<subject>-<variant>`); fall back to `kimi-code`
+// when unset so unconfigured deployments still route somewhere
+// sensible. `_agent` is reserved for a future per-agent override.
+function resolveAgentIdForExport(_agent: Agent): string {
+  const fromEnv = process.env['KIMI_CODE_AGENT_ID'];
+  if (fromEnv !== undefined && fromEnv.trim().length > 0) return fromEnv;
+  return 'kimi-code';
+}
 
 // projectCompactedMessages flattens kosong Message objects into the
 // wire-friendly {role, content} shape SDK subscribers consume. Text
