@@ -80,7 +80,7 @@ describe('Mem9 memory tools', () => {
         'X-API-Key': 'sk-test',
         'Content-Type': 'application/json',
       });
-      expect(JSON.parse(String(init?.body))).toMatchObject({
+      expect(parseJsonBody(init)).toMatchObject({
         messages: [{ role: 'user', content: 'User prefers Python' }],
         agent_id: 'kimi-code',
         mode: 'smart',
@@ -148,7 +148,7 @@ describe('Mem9 memory tools', () => {
 
   it('forwards retrieval_keys to mem9 server and surfaces accepted/rejected counts', async () => {
     const fetchImpl = vi.fn(async (_input: string | URL, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body));
+      const body = parseJsonBody(init);
       // Wire is snake_case `keys` matching mem9 server's
       // `IngestRequest.Keys []RetrievalKey` per the 2026-06-05 lock.
       expect(body).toMatchObject({
@@ -201,7 +201,7 @@ describe('Mem9 memory tools', () => {
     // tries fallback but logs intent". Empty array would be
     // ambiguous; we just omit the field.
     const fetchImpl = vi.fn(async (_input: string | URL, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body));
+      const body = parseJsonBody(init);
       expect('keys' in body).toBe(false);
       return jsonResponse({ status: 'accepted' });
     });
@@ -228,7 +228,7 @@ describe('Mem9 memory tools', () => {
         'X-Mnemo-Agent-Id': 'locomo-subject-variant',
         'X-API-Key': 'sk-test',
       });
-      expect(JSON.parse(String(init?.body))).toMatchObject({
+      expect(parseJsonBody(init)).toMatchObject({
         agent_id: 'locomo-subject-variant',
       });
       return jsonResponse({ status: 'accepted' });
@@ -264,4 +264,12 @@ function jsonResponse(body: unknown): Response {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+function parseJsonBody(init: RequestInit | undefined): Record<string, unknown> {
+  const body = init?.body;
+  if (typeof body !== 'string') {
+    throw new TypeError('expected JSON string request body');
+  }
+  return JSON.parse(body) as Record<string, unknown>;
 }
