@@ -194,6 +194,16 @@ export class Mem9MemoryProvider {
     // (locked 2026-06-05). Server validates / rejects / inserts;
     // missing or empty array → server falls back to its own
     // `extractkeys.Extract` LLM call.
+    //
+    // We also flip the request to `sync: true` whenever agent keys
+    // are present. mem9 server's messages-shape async path only logs
+    // `keys_rejected` — it doesn't return them. To close the agent
+    // self-correction loop (so a follow-up store can drop the
+    // rejected keys), we need the sync response shape that carries
+    // `keys_inserted` / `keys_rejected`. @Kaltsit caught this gap
+    // post-server-fc56bdd: the server response infrastructure is
+    // ready, but the client wasn't opted into sync, so feedback
+    // never reached the agent in practice.
     if (options.retrievalKeys !== undefined && options.retrievalKeys.length > 0) {
       body['keys'] = options.retrievalKeys.map((key) => {
         const wire: Record<string, unknown> = {
@@ -203,6 +213,7 @@ export class Mem9MemoryProvider {
         if (key.weight !== undefined) wire['weight'] = key.weight;
         return wire;
       });
+      body['sync'] = true;
     }
 
     const response = await this.fetchWithTimeout(

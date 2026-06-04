@@ -155,6 +155,11 @@ describe('Mem9 memory tools', () => {
         messages: [{ role: 'user', content: 'User lives in Chiba' }],
         agent_id: 'kimi-code',
         mode: 'smart',
+        // `sync: true` is required so mem9's messages-shape returns
+        // `keys_inserted` / `keys_rejected`. Async path only logs
+        // rejection server-side and the agent self-correction loop
+        // breaks. @Kaltsit caught this post-server-fc56bdd.
+        sync: true,
         keys: [
           { text: 'user lives in Chiba', source: 'agent', weight: 1.4 },
           { text: 'ユーザーの自宅 千葉県', source: 'agent_translation' },
@@ -203,6 +208,11 @@ describe('Mem9 memory tools', () => {
     const fetchImpl = vi.fn(async (_input: string | URL, init?: RequestInit) => {
       const body = parseJsonBody(init);
       expect('keys' in body).toBe(false);
+      // Legacy no-keys store stays async (no `sync: true`) so it
+      // doesn't pay the latency of mem9's sync K-extraction path.
+      // Sync is only opted into when there are agent keys whose
+      // rejected feedback the agent needs to learn from.
+      expect('sync' in body).toBe(false);
       return jsonResponse({ status: 'accepted' });
     });
     const provider = new Mem9MemoryProvider({
