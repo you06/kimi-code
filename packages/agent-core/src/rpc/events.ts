@@ -254,6 +254,14 @@ export interface CompactionCancelledEvent {
 export interface CompactionCompletedEvent {
   readonly type: 'compaction.completed';
   readonly result: CompactionResult;
+  // Stable id for this compaction round. The compaction memory
+  // exporter writes the same value into mem9 as
+  // `metadata.compaction_id` (Phase 3a), so SDK subscribers — most
+  // notably the LoCoMo benchmark variant 4 — can join the prefix /
+  // dia_id mapping seen here against the memories mem9 later
+  // returns. Optional only so older SDK consumers that pre-date
+  // Phase 3a still type-check; emitted on every real compaction.
+  readonly compactionId?: string;
   // Raw user/assistant/tool prefix that was just compacted. The
   // slice is taken from the *final* result-driven compacted count, so
   // subscribers always see the same prefix the summary actually

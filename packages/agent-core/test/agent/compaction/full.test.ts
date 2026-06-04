@@ -201,7 +201,7 @@ describe('FullCompaction', () => {
       [wire] usage.record               { "model": "kimi-code", "usage": { "inputOther": 495, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 }, "usageScope": "session", "time": "<time>" }
       [emit] agent.status.updated       { "model": "kimi-code", "contextTokens": 120, "maxContextTokens": 256000, "contextUsage": 0.00046875, "planMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 495, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 495, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
       [wire] full_compaction.complete   { "time": "<time>" }
-      [emit] compaction.completed       { "result": { "summary": "Compacted summary.", "compactedCount": 6, "tokensBefore": 39, "tokensAfter": 5 }, "compactedMessages": [ { "role": "user", "content": "old user one" }, { "role": "assistant", "content": "old assistant one" }, { "role": "user", "content": "old user two" }, { "role": "assistant", "content": "old assistant two" }, { "role": "user", "content": "recent user three" }, { "role": "assistant", "content": "recent assistant three" } ] }
+      [emit] compaction.completed       { "compactionId": "<uuid-1>", "result": { "summary": "Compacted summary.", "compactedCount": 6, "tokensBefore": 39, "tokensAfter": 5 }, "compactedMessages": [ { "role": "user", "content": "old user one" }, { "role": "assistant", "content": "old assistant one" }, { "role": "user", "content": "old user two" }, { "role": "assistant", "content": "old assistant two" }, { "role": "user", "content": "recent user three" }, { "role": "assistant", "content": "recent assistant three" } ] }
       [wire] context.apply_compaction   { "summary": "Compacted summary.", "compactedCount": 6, "tokensBefore": 39, "tokensAfter": 5, "time": "<time>" }
       [emit] agent.status.updated       { "model": "kimi-code", "contextTokens": 5, "maxContextTokens": 256000, "contextUsage": 0.00001953125, "planMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 495, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 495, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
     `);
@@ -471,10 +471,12 @@ describe('FullCompaction', () => {
     });
   });
 
-  it('compaction-memory-exporter sees raw prefix + metadata and POSTs to mem9 with ingest_source', async () => {
-    // End-to-end regression for #mem9-discussion:9dcf4b01 Phase 2b:
-    // a successful compaction must enqueue + ship the raw prefix to a
-    // configured mem9 exporter with metadata.ingest_source set.
+  it('compaction-memory-exporter ships the summary + Phase 3a metadata to mem9', async () => {
+    // End-to-end regression for #mem9-discussion:9dcf4b01 Phase 3a:
+    // a successful compaction enqueues + ships *the summary*
+    // (not the raw prefix) to a configured mem9 exporter, with
+    // `metadata.ingest_source = "kimi-code-compaction-summary"` and
+    // a fresh `compaction_id` per round.
     const captured: Array<{ url: string; body: Record<string, unknown> }> = [];
     const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
@@ -517,17 +519,39 @@ describe('FullCompaction', () => {
       agent_id: 'kimi-code',
       mode: 'smart',
       metadata: {
-        ingest_source: 'kimi-code-compaction',
+        ingest_source: 'kimi-code-compaction-summary',
         compaction_trigger: 'auto',
+        compacted_count: expect.any(Number),
+        tokens_before: expect.any(Number),
+        tokens_after: expect.any(Number),
       },
     });
-    // The raw user/assistant prefix is forwarded — not the summary.
-    expect(body['messages']).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ role: 'user', content: 'user fact A' }),
-        expect.objectContaining({ role: 'assistant', content: 'assistant reply A' }),
-      ]),
+    // Each compaction round produces a fresh uuid that the LoCoMo
+    // benchmark variant 4 subscriber can join against its parallel
+    // `compaction.completed` map. The id must appear on BOTH the
+    // event payload AND the mem9 POST metadata — otherwise the
+    // subscriber's `compaction_id → dia_ids` map can't be joined
+    // back to the memories mem9 later returns. @Kaltsit caught
+    // this ordering in Phase 3a review.
+    const completedEvent = ctx.allEvents.find(
+      (event) => event.event === 'compaction.completed',
     );
+    expect(completedEvent).toBeDefined();
+    const eventCompactionId = (
+      completedEvent!.args as { compactionId?: string }
+    ).compactionId;
+    expect(eventCompactionId).toMatch(/^[0-9a-f-]+$/);
+    expect((body['metadata'] as Record<string, unknown>)['compaction_id']).toBe(
+      eventCompactionId,
+    );
+    // Phase 3a wire shape: messages-shape POST with the summary as
+    // a single user-role entry — *not* the raw user/assistant
+    // prefix. The raw prefix is still exposed on the
+    // `compaction.completed` event for LoCoMo / future Phase 3b
+    // consumers, but the exporter intentionally does not send it.
+    expect(body['messages']).toEqual([
+      { role: 'user', content: 'Compacted summary.' },
+    ]);
   });
 
   it('Agent.dispose() stops the wired compaction memory exporter reaper', async () => {
@@ -1013,7 +1037,7 @@ describe('FullCompaction', () => {
       [wire] usage.record               { "model": "kimi-code", "usage": { "inputOther": 473, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 }, "usageScope": "session", "time": "<time>" }
       [emit] agent.status.updated       { "model": "kimi-code", "contextTokens": 80, "maxContextTokens": 256000, "contextUsage": 0.0003125, "planMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 473, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 473, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
       [wire] full_compaction.complete   { "time": "<time>" }
-      [emit] compaction.completed       { "result": { "summary": "Compacted prefix.", "compactedCount": 4, "tokensBefore": 25, "tokensAfter": 5 }, "compactedMessages": [ { "role": "user", "content": "old user one" }, { "role": "assistant", "content": "old assistant one" }, { "role": "user", "content": "recent user two" }, { "role": "assistant", "content": "recent assistant two" } ] }
+      [emit] compaction.completed       { "compactionId": "<uuid-1>", "result": { "summary": "Compacted prefix.", "compactedCount": 4, "tokensBefore": 25, "tokensAfter": 5 }, "compactedMessages": [ { "role": "user", "content": "old user one" }, { "role": "assistant", "content": "old assistant one" }, { "role": "user", "content": "recent user two" }, { "role": "assistant", "content": "recent assistant two" } ] }
       [wire] context.apply_compaction   { "summary": "Compacted prefix.", "compactedCount": 4, "tokensBefore": 25, "tokensAfter": 5, "time": "<time>" }
       [emit] agent.status.updated       { "model": "kimi-code", "contextTokens": 5, "maxContextTokens": 256000, "contextUsage": 0.00001953125, "planMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 473, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 473, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
     `);
@@ -1111,15 +1135,15 @@ describe('FullCompaction', () => {
       [wire] usage.record                { "model": "kimi-code", "usage": { "inputOther": 472, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 }, "usageScope": "session", "time": "<time>" }
       [emit] agent.status.updated        { "model": "kimi-code", "contextTokens": 950000, "maxContextTokens": 256000, "contextUsage": 3.7109375, "planMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 472, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 472, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
       [wire] full_compaction.complete    { "time": "<time>" }
-      [emit] compaction.completed        { "result": { "summary": "Auto compacted summary.", "compactedCount": 4, "tokensBefore": 46, "tokensAfter": 28 }, "compactedMessages": [ { "role": "user", "content": "old user one" }, { "role": "assistant", "content": "old assistant one" }, { "role": "user", "content": "old user two" }, { "role": "assistant", "content": "old assistant two" } ] }
+      [emit] compaction.completed        { "compactionId": "<uuid-1>", "result": { "summary": "Auto compacted summary.", "compactedCount": 4, "tokensBefore": 46, "tokensAfter": 28 }, "compactedMessages": [ { "role": "user", "content": "old user one" }, { "role": "assistant", "content": "old assistant one" }, { "role": "user", "content": "old user two" }, { "role": "assistant", "content": "old assistant two" } ] }
       [wire] context.apply_compaction    { "summary": "Auto compacted summary.", "compactedCount": 4, "tokensBefore": 46, "tokensAfter": 28, "time": "<time>" }
       [emit] agent.status.updated        { "model": "kimi-code", "contextTokens": 28, "maxContextTokens": 256000, "contextUsage": 0.000109375, "planMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 472, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 472, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
-      [wire] context.append_loop_event   { "event": { "type": "step.begin", "uuid": "<uuid-1>", "turnId": "0", "step": 1 }, "time": "<time>" }
-      [emit] turn.step.started           { "turnId": 0, "step": 1, "stepId": "<uuid-1>" }
+      [wire] context.append_loop_event   { "event": { "type": "step.begin", "uuid": "<uuid-2>", "turnId": "0", "step": 1 }, "time": "<time>" }
+      [emit] turn.step.started           { "turnId": 0, "step": 1, "stepId": "<uuid-2>" }
       [emit] assistant.delta             { "turnId": 0, "delta": "I can answer after compaction." }
-      [wire] context.append_loop_event   { "event": { "type": "content.part", "uuid": "<uuid-2>", "turnId": "0", "step": 1, "stepUuid": "<uuid-1>", "part": { "type": "text", "text": "I can answer after compaction." } }, "time": "<time>" }
-      [wire] context.append_loop_event   { "event": { "type": "step.end", "uuid": "<uuid-1>", "turnId": "0", "step": 1, "usage": { "inputOther": 31, "output": 11, "inputCacheRead": 0, "inputCacheCreation": 0 }, "finishReason": "end_turn" }, "time": "<time>" }
-      [emit] turn.step.completed         { "turnId": 0, "step": 1, "stepId": "<uuid-1>", "usage": { "inputOther": 31, "output": 11, "inputCacheRead": 0, "inputCacheCreation": 0 }, "finishReason": "end_turn" }
+      [wire] context.append_loop_event   { "event": { "type": "content.part", "uuid": "<uuid-3>", "turnId": "0", "step": 1, "stepUuid": "<uuid-2>", "part": { "type": "text", "text": "I can answer after compaction." } }, "time": "<time>" }
+      [wire] context.append_loop_event   { "event": { "type": "step.end", "uuid": "<uuid-2>", "turnId": "0", "step": 1, "usage": { "inputOther": 31, "output": 11, "inputCacheRead": 0, "inputCacheCreation": 0 }, "finishReason": "end_turn" }, "time": "<time>" }
+      [emit] turn.step.completed         { "turnId": 0, "step": 1, "stepId": "<uuid-2>", "usage": { "inputOther": 31, "output": 11, "inputCacheRead": 0, "inputCacheCreation": 0 }, "finishReason": "end_turn" }
       [wire] usage.record                { "model": "kimi-code", "usage": { "inputOther": 31, "output": 11, "inputCacheRead": 0, "inputCacheCreation": 0 }, "usageScope": "turn", "time": "<time>" }
       [emit] agent.status.updated        { "model": "kimi-code", "contextTokens": 42, "maxContextTokens": 256000, "contextUsage": 0.0001640625, "planMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 503, "output": 20, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 503, "output": 20, "inputCacheRead": 0, "inputCacheCreation": 0 }, "currentTurn": { "inputOther": 31, "output": 11, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
       [emit] turn.ended                  { "turnId": 0, "reason": "completed" }
@@ -1772,20 +1796,20 @@ describe('FullCompaction', () => {
       [wire] usage.record                { "model": "mock-model", "usage": { "inputOther": 456, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 }, "usageScope": "session", "time": "<time>" }
       [emit] agent.status.updated        { "model": "mock-model", "contextTokens": 0, "maxContextTokens": 1000000, "contextUsage": 0, "planMode": false, "permission": "manual", "usage": { "byModel": { "mock-model": { "inputOther": 456, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 456, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
       [wire] full_compaction.complete    { "time": "<time>" }
-      [emit] compaction.completed        { "result": { "summary": "First compacted summary.", "compactedCount": 1, "tokensBefore": 8, "tokensAfter": 6 }, "compactedMessages": [ { "role": "user", "content": "Trigger repeated compaction" } ] }
+      [emit] compaction.completed        { "compactionId": "<uuid-1>", "result": { "summary": "First compacted summary.", "compactedCount": 1, "tokensBefore": 8, "tokensAfter": 6 }, "compactedMessages": [ { "role": "user", "content": "Trigger repeated compaction" } ] }
       [wire] context.apply_compaction    { "summary": "First compacted summary.", "compactedCount": 1, "tokensBefore": 8, "tokensAfter": 6, "time": "<time>" }
       [emit] agent.status.updated        { "model": "mock-model", "contextTokens": 6, "maxContextTokens": 1000000, "contextUsage": 0.000006, "planMode": false, "permission": "manual", "usage": { "byModel": { "mock-model": { "inputOther": 456, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 456, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
-      [wire] context.append_loop_event   { "event": { "type": "step.begin", "uuid": "<uuid-1>", "turnId": "0", "step": 1 }, "time": "<time>" }
-      [emit] turn.step.started           { "turnId": 0, "step": 1, "stepId": "<uuid-1>" }
+      [wire] context.append_loop_event   { "event": { "type": "step.begin", "uuid": "<uuid-2>", "turnId": "0", "step": 1 }, "time": "<time>" }
+      [emit] turn.step.started           { "turnId": 0, "step": 1, "stepId": "<uuid-2>" }
       [emit] assistant.delta             { "turnId": 0, "delta": "I need a tool." }
       [emit] tool.call.delta             { "turnId": 0, "toolCallId": "call_missing", "name": "MissingTool", "argumentsPart": "{}" }
-      [wire] context.append_loop_event   { "event": { "type": "content.part", "uuid": "<uuid-2>", "turnId": "0", "step": 1, "stepUuid": "<uuid-1>", "part": { "type": "text", "text": "I need a tool." } }, "time": "<time>" }
-      [wire] context.append_loop_event   { "event": { "type": "tool.call", "uuid": "call_missing", "turnId": "0", "step": 1, "stepUuid": "<uuid-1>", "toolCallId": "call_missing", "name": "MissingTool", "args": {} }, "time": "<time>" }
+      [wire] context.append_loop_event   { "event": { "type": "content.part", "uuid": "<uuid-3>", "turnId": "0", "step": 1, "stepUuid": "<uuid-2>", "part": { "type": "text", "text": "I need a tool." } }, "time": "<time>" }
+      [wire] context.append_loop_event   { "event": { "type": "tool.call", "uuid": "call_missing", "turnId": "0", "step": 1, "stepUuid": "<uuid-2>", "toolCallId": "call_missing", "name": "MissingTool", "args": {} }, "time": "<time>" }
       [emit] tool.call.started           { "turnId": 0, "toolCallId": "call_missing", "name": "MissingTool", "args": {} }
       [wire] context.append_loop_event   { "event": { "type": "tool.result", "parentUuid": "call_missing", "toolCallId": "call_missing", "result": { "output": "Tool \\"MissingTool\\" not found", "isError": true } }, "time": "<time>" }
       [emit] tool.result                 { "turnId": 0, "toolCallId": "call_missing", "output": "Tool \\"MissingTool\\" not found", "isError": true }
-      [wire] context.append_loop_event   { "event": { "type": "step.end", "uuid": "<uuid-1>", "turnId": "0", "step": 1, "usage": { "inputOther": 9, "output": 11, "inputCacheRead": 0, "inputCacheCreation": 0 }, "finishReason": "tool_use" }, "time": "<time>" }
-      [emit] turn.step.completed         { "turnId": 0, "step": 1, "stepId": "<uuid-1>", "usage": { "inputOther": 9, "output": 11, "inputCacheRead": 0, "inputCacheCreation": 0 }, "finishReason": "tool_use" }
+      [wire] context.append_loop_event   { "event": { "type": "step.end", "uuid": "<uuid-2>", "turnId": "0", "step": 1, "usage": { "inputOther": 9, "output": 11, "inputCacheRead": 0, "inputCacheCreation": 0 }, "finishReason": "tool_use" }, "time": "<time>" }
+      [emit] turn.step.completed         { "turnId": 0, "step": 1, "stepId": "<uuid-2>", "usage": { "inputOther": 9, "output": 11, "inputCacheRead": 0, "inputCacheCreation": 0 }, "finishReason": "tool_use" }
       [wire] usage.record                { "model": "mock-model", "usage": { "inputOther": 9, "output": 11, "inputCacheRead": 0, "inputCacheCreation": 0 }, "usageScope": "turn", "time": "<time>" }
       [emit] agent.status.updated        { "model": "mock-model", "contextTokens": 20, "maxContextTokens": 1000000, "contextUsage": 0.00002, "planMode": false, "permission": "manual", "usage": { "byModel": { "mock-model": { "inputOther": 465, "output": 20, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 465, "output": 20, "inputCacheRead": 0, "inputCacheCreation": 0 }, "currentTurn": { "inputOther": 9, "output": 11, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
       [emit] turn.step.interrupted       { "turnId": 0, "step": 2, "reason": "error", "message": "Compaction limit exceeded (1)" }
