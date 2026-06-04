@@ -11,12 +11,64 @@ import { literalRulePattern, matchesGlobRuleSubject } from '../../support/rule-m
 import { ToolResultBuilder } from '../../support/result-builder';
 import DESCRIPTION from './memory-store.md';
 
+// Per #mem9-discussion:9dcf4b01 (2026-06-05): agent generates the
+// retrieval keys itself instead of letting mem9 server run a
+// generic LLM extractor against the V text. The agent has the full
+// system prompt + tool context + conversation history when it stores
+// a fact, so the K it produces should describe the queries it (or a
+// future agent in the same session) is likely to actually ask. The
+// mem9 server-side `extractkeys.Extract` path remains as fallback
+// when `retrieval_keys` is omitted/empty.
+const RetrievalKeySchema = z.object({
+  text: z
+    .string()
+    .min(1)
+    .max(200)
+    .describe(
+      'A short query-shaped phrase (≤ 8 words) that a future agent might say when looking for this fact. ' +
+        'Use a complete predicate fragment ("user works at", "team deploys on", "project uses") or a named ' +
+        'entity from the fact ("Acme Robotics", "千葉"). Avoid single-token generic words like "user", "home", ' +
+        '"team" — they collide with unrelated memories.',
+    ),
+  source: z
+    .enum(['agent', 'agent_translation'])
+    .describe(
+      '`agent` for keys in the same language as the fact. `agent_translation` for the cross-language ' +
+        'expansion when the fact contains a named entity that the user may search for in another language ' +
+        '(e.g. emit both "company in Otemachi" and "会社の所在地 大手町").',
+    ),
+  weight: z
+    .number()
+    .min(0.1)
+    .max(2.0)
+    .optional()
+    .describe(
+      'Recall-time ranking weight in [0.1, 2.0]. Default 1.0. Use higher (≈1.3–1.5) for keys that combine a ' +
+        'predicate AND a named entity; use lower (≈0.5–0.8) for entity-only keys.',
+    ),
+});
+
 export const Mem9MemoryStoreInputSchema = z.object({
   content: z
     .string()
     .min(1)
     .describe(
       'The fact to remember, written as a short declarative statement with an explicit subject. Store one fact per call.',
+    ),
+  retrieval_keys: z
+    .array(RetrievalKeySchema)
+    .min(1)
+    .max(10)
+    .optional()
+    .describe(
+      'Retrieval keys for this fact: 3–7 short query phrases (≤ 8 words each) that mix predicate fragments ' +
+        '(like "user works at") and named entities (like "Acme Robotics"). When the fact contains a named ' +
+        'entity that may be searched for in another language, add 1–2 cross-language keys with ' +
+        '`source: "agent_translation"`. mem9 server rejects single-token generic stop-list words ' +
+        '(`user`, `home`, `team`, `project`, `company`, `name`, `date`, `time`, `place`, `work`); each key ' +
+        'must share at least one token with the fact (translation keys are exempt). Omitting this field ' +
+        "falls back to mem9's generic server-side key extraction, which has no access to the agent's " +
+        'reasoning context and tends to produce noisier keys; prefer providing keys yourself.',
     ),
 });
 
@@ -47,7 +99,8 @@ export class Mem9MemoryStoreTool implements BuiltinTool<Mem9MemoryStoreInput> {
       },
       approvalRule: literalRulePattern(this.name, subject),
       matchesRule: (ruleArgs) => matchesGlobRuleSubject(ruleArgs, subject),
-      execute: (ctx) => this.execution({ content }, ctx),
+      execute: (ctx) =>
+        this.execution({ content, retrieval_keys: args.retrieval_keys }, ctx),
     };
   }
 
@@ -59,6 +112,7 @@ export class Mem9MemoryStoreTool implements BuiltinTool<Mem9MemoryStoreInput> {
       const result = await this.provider.store({
         content: args.content,
         sessionId: this.sessionId,
+        retrievalKeys: args.retrieval_keys,
         signal,
       });
       const builder = new ToolResultBuilder({ maxChars: 4_000, maxLineLength: 2_000 });
@@ -68,6 +122,18 @@ export class Mem9MemoryStoreTool implements BuiltinTool<Mem9MemoryStoreInput> {
       builder.write(`Searchable now: ${String(result.searchableNow)}\n`);
       if (this.sessionId !== undefined && this.sessionId.length > 0) {
         builder.write(`Source session: ${this.sessionId}\n`);
+      }
+      if (result.keysInserted !== undefined) {
+        builder.write(`Retrieval keys accepted: ${String(result.keysInserted)}\n`);
+      }
+      if (result.keysRejected !== undefined && result.keysRejected.length > 0) {
+        builder.write('Retrieval keys rejected:\n');
+        for (const rejected of result.keysRejected) {
+          builder.write(`  - ${rejected.text} (${rejected.reason})\n`);
+        }
+        builder.write(
+          'Adjust the rejected keys (drop stop-list words, add a predicate fragment, share a token with the fact) before re-storing this fact.\n',
+        );
       }
       if (result.hint !== undefined) {
         builder.write(`Hint: ${result.hint}\n`);
