@@ -365,9 +365,18 @@ export class FullCompaction {
       // retries — `reduceCompactOnOverflow`).
       const compactedPrefix = originalHistory.slice(0, result.compactedCount);
       const compactedMessages = projectCompactedMessages(compactedPrefix);
+      // Generate the compaction id BEFORE emitting the event so SDK
+      // subscribers (LoCoMo benchmark variant 4, future Phase 3b
+      // fact extractor) get the same id the exporter writes into
+      // mem9's `metadata.compaction_id`. Without this ordering the
+      // subscriber's `compaction_id → dia_ids` map can't be joined
+      // back to the memories mem9 later returns. @Kaltsit caught
+      // this in Phase 3a review (#mem9-discussion:9dcf4b01).
+      const compactionId = randomUUID();
       this.markCompleted();
       this.agent.emitEvent({
         type: 'compaction.completed',
+        compactionId,
         result,
         compactedMessages,
       });
@@ -390,7 +399,6 @@ export class FullCompaction {
       // subscriber join exporter writes to its parallel
       // `compaction.completed` event mapping for deterministic
       // recall@k (no fuzzy matching).
-      const compactionId = randomUUID();
       await this.memoryExporter.enqueue({
         sessionId: this.sessionId,
         agentId: resolveAgentIdForExport(this.agent),
