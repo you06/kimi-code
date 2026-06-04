@@ -471,10 +471,12 @@ describe('FullCompaction', () => {
     });
   });
 
-  it('compaction-memory-exporter sees raw prefix + metadata and POSTs to mem9 with ingest_source', async () => {
-    // End-to-end regression for #mem9-discussion:9dcf4b01 Phase 2b:
-    // a successful compaction must enqueue + ship the raw prefix to a
-    // configured mem9 exporter with metadata.ingest_source set.
+  it('compaction-memory-exporter ships the summary + Phase 3a metadata to mem9', async () => {
+    // End-to-end regression for #mem9-discussion:9dcf4b01 Phase 3a:
+    // a successful compaction enqueues + ships *the summary*
+    // (not the raw prefix) to a configured mem9 exporter, with
+    // `metadata.ingest_source = "kimi-code-compaction-summary"` and
+    // a fresh `compaction_id` per round.
     const captured: Array<{ url: string; body: Record<string, unknown> }> = [];
     const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input.toString();
@@ -517,17 +519,27 @@ describe('FullCompaction', () => {
       agent_id: 'kimi-code',
       mode: 'smart',
       metadata: {
-        ingest_source: 'kimi-code-compaction',
+        ingest_source: 'kimi-code-compaction-summary',
         compaction_trigger: 'auto',
+        compacted_count: expect.any(Number),
+        tokens_before: expect.any(Number),
+        tokens_after: expect.any(Number),
       },
     });
-    // The raw user/assistant prefix is forwarded — not the summary.
-    expect(body['messages']).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ role: 'user', content: 'user fact A' }),
-        expect.objectContaining({ role: 'assistant', content: 'assistant reply A' }),
-      ]),
+    // Each compaction round produces a fresh uuid that the LoCoMo
+    // benchmark variant 4 subscriber can join against its parallel
+    // `compaction.completed` map.
+    expect((body['metadata'] as Record<string, unknown>)['compaction_id']).toMatch(
+      /^[0-9a-f-]+$/,
     );
+    // Phase 3a wire shape: messages-shape POST with the summary as
+    // a single user-role entry — *not* the raw user/assistant
+    // prefix. The raw prefix is still exposed on the
+    // `compaction.completed` event for LoCoMo / future Phase 3b
+    // consumers, but the exporter intentionally does not send it.
+    expect(body['messages']).toEqual([
+      { role: 'user', content: 'Compacted summary.' },
+    ]);
   });
 
   it('Agent.dispose() stops the wired compaction memory exporter reaper', async () => {

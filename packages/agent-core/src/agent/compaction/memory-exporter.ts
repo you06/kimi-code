@@ -44,11 +44,29 @@ import { join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import type { Logger } from '../../logging/types';
-import type { CompactedMessageView } from '../../rpc/events';
 
+// Phase 3a contract (locked in #mem9-discussion:9dcf4b01 on 2026-06-04):
+// the exporter posts the *compaction summary* — not the raw compacted
+// prefix — to mem9 as one V per successful compaction. The summary is
+// already the agent's compressed understanding of the prefix and is
+// short enough (≤ a few KB) that mem9's K-extraction LLM call stays
+// well within its 3 s timeout. The richer per-fact extractor that
+// produces structured Fact[] with `kind`/`confidence`/
+// `source_message_indices` lands in Phase 3b; that is a separate
+// LLM call on top of `summary + compactedMessages` and a separate
+// PR. v1 documentation marks this path as pragmatic-not-final.
 export interface CompactionExportMetadata {
-  readonly ingest_source: 'kimi-code-compaction';
+  readonly ingest_source: 'kimi-code-compaction-summary';
   readonly session_id?: string;
+  // compaction_id uniquely identifies this compaction round. The
+  // LoCoMo benchmark variant 4 subscriber maps `compaction_id →
+  // covered dia_ids` from the parallel `compaction.completed` event
+  // stream so recall@k can match at compaction granularity without
+  // fuzzy text matching. Phase 3b will narrow this to turn-level
+  // via `source_message_indices` once the agent-side fact extractor
+  // produces them.
+  readonly compaction_id: string;
+  readonly compacted_count: number;
   readonly tokens_before: number;
   readonly tokens_after: number;
   readonly compaction_trigger: 'auto' | 'manual';
@@ -58,7 +76,6 @@ export interface CompactionExportJobInput {
   readonly sessionId?: string;
   readonly agentId: string;
   readonly summary: string;
-  readonly compactedMessages: readonly CompactedMessageView[];
   readonly metadata: CompactionExportMetadata;
 }
 
@@ -363,11 +380,15 @@ export class CompactionMemoryExporter {
   }
 
   private async postToMem9(job: CompactionExportJobOnDisk): Promise<void> {
+    // Messages-shape POST with the summary as a single user-role
+    // entry. This matches the wire used by the in-band
+    // `Mem9MemoryProvider.store()` so kimi-code/mem9 only has one
+    // request-routing path to validate. The K=>V refactor's
+    // `ingestMessages → concatUserMessages → svc.memory.Create`
+    // turns the summary into one V and runs `extractkeys.Extract`
+    // against it (small input, well under the 3 s timeout).
     const body = {
-      messages: job.compactedMessages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
+      messages: [{ role: 'user', content: job.summary }],
       agent_id: job.agentId,
       session_id: job.sessionId,
       mode: 'smart',

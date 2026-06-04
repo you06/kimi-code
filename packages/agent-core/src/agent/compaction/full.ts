@@ -29,6 +29,8 @@ import {
   applyCompletionBudget,
   resolveCompletionBudget,
 } from '../../utils/completion-budget';
+import { randomUUID } from 'node:crypto';
+
 import type { CompactedMessageView } from '../../rpc/events';
 import compactionInstructionTemplate from './compaction-instruction.md';
 import {
@@ -375,14 +377,29 @@ export class FullCompaction {
       // non-throwing; the network POST to mem9 happens later in the
       // exporter's reaper. Failures don't fall through into the
       // compaction state machine.
+      //
+      // Phase 3a (locked 2026-06-04, #mem9-discussion:9dcf4b01):
+      // ship the *summary* — a short narrative the LLM already
+      // produced — instead of the raw compacted prefix. mem9's K
+      // extraction now sees a ~few-KB input rather than a
+      // potentially-100K-token prefix, which keeps it under its 3 s
+      // timeout. The richer per-fact extractor (Phase 3b) will run
+      // *on top of* `summary + compactedMessages` and produce
+      // structured `Fact[]`; that lands in its own follow-up PR.
+      // `compaction_id` lets the LoCoMo benchmark variant 4
+      // subscriber join exporter writes to its parallel
+      // `compaction.completed` event mapping for deterministic
+      // recall@k (no fuzzy matching).
+      const compactionId = randomUUID();
       await this.memoryExporter.enqueue({
         sessionId: this.sessionId,
         agentId: resolveAgentIdForExport(this.agent),
         summary: result.summary,
-        compactedMessages,
         metadata: {
-          ingest_source: 'kimi-code-compaction',
+          ingest_source: 'kimi-code-compaction-summary',
           session_id: this.sessionId,
+          compaction_id: compactionId,
+          compacted_count: result.compactedCount,
           tokens_before: result.tokensBefore,
           tokens_after: result.tokensAfter,
           compaction_trigger: data.source,
