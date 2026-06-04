@@ -80,7 +80,7 @@ describe('Mem9 memory tools', () => {
         'X-API-Key': 'sk-test',
         'Content-Type': 'application/json',
       });
-      expect(JSON.parse(String(init?.body))).toMatchObject({
+      expect(parseJsonBody(init)).toMatchObject({
         messages: [{ role: 'user', content: 'User prefers Python' }],
         agent_id: 'kimi-code',
         mode: 'smart',
@@ -108,13 +108,127 @@ describe('Mem9 memory tools', () => {
     expect(content).toContain('not immediately searchable');
   });
 
+  it('parses retrieval_keys input — weight optional, source enum required', () => {
+    // Locked wire contract from #mem9-discussion:9dcf4b01 2026-06-05:
+    // agent-supplied retrieval keys go in `retrieval_keys`, with
+    // `source ∈ {agent, agent_translation}` and optional `weight` in
+    // [0.1, 2.0]. Invalid source values and out-of-range weights are
+    // caught by the schema before they hit the wire.
+    expect(
+      Mem9MemoryStoreInputSchema.safeParse({
+        content: 'User lives in Chiba',
+        retrieval_keys: [
+          { text: 'user lives in Chiba', source: 'agent', weight: 1.4 },
+          { text: 'ユーザーの自宅 千葉県', source: 'agent_translation' },
+        ],
+      }).success,
+    ).toBe(true);
+
+    expect(
+      Mem9MemoryStoreInputSchema.safeParse({
+        content: 'x',
+        retrieval_keys: [{ text: 'key', source: 'extract' }],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      Mem9MemoryStoreInputSchema.safeParse({
+        content: 'x',
+        retrieval_keys: [{ text: 'key', source: 'agent', weight: 3.0 }],
+      }).success,
+    ).toBe(false);
+
+    expect(
+      Mem9MemoryStoreInputSchema.safeParse({
+        content: 'x',
+        retrieval_keys: [{ text: 'key', source: 'agent', weight: 0 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('forwards retrieval_keys to mem9 server and surfaces accepted/rejected counts', async () => {
+    const fetchImpl = vi.fn(async (_input: string | URL, init?: RequestInit) => {
+      const body = parseJsonBody(init);
+      // Wire is snake_case `keys` matching mem9 server's
+      // `IngestRequest.Keys []RetrievalKey` per the 2026-06-05 lock.
+      expect(body).toMatchObject({
+        messages: [{ role: 'user', content: 'User lives in Chiba' }],
+        agent_id: 'kimi-code',
+        mode: 'smart',
+        keys: [
+          { text: 'user lives in Chiba', source: 'agent', weight: 1.4 },
+          { text: 'ユーザーの自宅 千葉県', source: 'agent_translation' },
+        ],
+      });
+      // Server rejects the stop-list-only key, accepts the other.
+      return jsonResponse({
+        status: 'ok',
+        keys_inserted: 1,
+        keys_rejected: [{ text: 'user', reason: 'stop_list_single_token' }],
+      });
+    });
+    const provider = new Mem9MemoryProvider({
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    const tool = new Mem9MemoryStoreTool(provider, 'session-x');
+
+    const result = await executeTool(tool, {
+      turnId: 't1',
+      toolCallId: 'c-store-keys',
+      args: {
+        content: 'User lives in Chiba',
+        retrieval_keys: [
+          { text: 'user lives in Chiba', source: 'agent', weight: 1.4 },
+          { text: 'ユーザーの自宅 千葉県', source: 'agent_translation' },
+        ],
+      },
+      signal,
+    });
+
+    expect(result.isError).toBe(false);
+    const content = toolContentString(result);
+    expect(content).toContain('Retrieval keys accepted: 1');
+    expect(content).toContain('user (stop_list_single_token)');
+    expect(content).toContain('Adjust the rejected keys');
+  });
+
+  it('omits the `keys` field when retrieval_keys is absent so server falls back to extract', async () => {
+    // Backward-compat path: when the agent doesn't supply
+    // `retrieval_keys`, the request body must NOT include `keys: []`,
+    // because mem9 server distinguishes "no agent keys → fall back to
+    // extractkeys.Extract" from "agent keys empty → server still
+    // tries fallback but logs intent". Empty array would be
+    // ambiguous; we just omit the field.
+    const fetchImpl = vi.fn(async (_input: string | URL, init?: RequestInit) => {
+      const body = parseJsonBody(init);
+      expect('keys' in body).toBe(false);
+      return jsonResponse({ status: 'accepted' });
+    });
+    const provider = new Mem9MemoryProvider({
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    const tool = new Mem9MemoryStoreTool(provider, 'session-x');
+
+    const result = await executeTool(tool, {
+      turnId: 't1',
+      toolCallId: 'c-store-no-keys',
+      args: { content: 'Project ships on Friday' },
+      signal,
+    });
+
+    expect(result.isError).toBe(false);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('uses the configured agent id for mem9 headers and store body', async () => {
     const fetchImpl = vi.fn(async (_input: string | URL, init?: RequestInit) => {
       expect(init?.headers).toMatchObject({
         'X-Mnemo-Agent-Id': 'locomo-subject-variant',
         'X-API-Key': 'sk-test',
       });
-      expect(JSON.parse(String(init?.body))).toMatchObject({
+      expect(parseJsonBody(init)).toMatchObject({
         agent_id: 'locomo-subject-variant',
       });
       return jsonResponse({ status: 'accepted' });
@@ -150,4 +264,12 @@ function jsonResponse(body: unknown): Response {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+function parseJsonBody(init: RequestInit | undefined): Record<string, unknown> {
+  const body = init?.body;
+  if (typeof body !== 'string') {
+    throw new TypeError('expected JSON string request body');
+  }
+  return JSON.parse(body) as Record<string, unknown>;
 }
