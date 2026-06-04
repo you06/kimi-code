@@ -30,11 +30,42 @@ export interface Mem9MemorySearchResult {
   readonly retryHint?: string;
 }
 
+// Agent-provided retrieval key, mirroring the locked wire shape from
+// #mem9-discussion:9dcf4b01 2026-06-05. The agent generates these
+// short query-shaped phrases at Mem9MemoryStore time; mem9 server
+// validates and persists them to memory_keys, skipping its server-side
+// extractkeys LLM call. When the array is empty/absent, mem9 falls
+// back to server-side extraction.
+export interface Mem9RetrievalKey {
+  // Short query-shaped phrase (≤ 8 words). Must include a predicate
+  // fragment (e.g. "user works at", "team deploys on") OR a named
+  // entity (e.g. "Acme Robotics", "千葉").
+  readonly text: string;
+  // `agent` for same-language K; `agent_translation` for cross-language
+  // expansion (e.g. Japanese surface form of a Chinese entity).
+  readonly source: 'agent' | 'agent_translation';
+  // Recall-time ranking weight in [0.1, 2.0]. Default 1.0 if omitted.
+  readonly weight?: number;
+}
+
+// Rejected key feedback from mem9 server's validation pass. Only the
+// sync ingest path returns this; the async accepted path only logs
+// rejections server-side and returns `undefined` here. Surface to the
+// agent so a retry can avoid the same mistake.
+export interface Mem9RejectedKey {
+  readonly text: string;
+  readonly reason: string;
+}
+
 export interface Mem9MemoryStoreResult {
   readonly status: string;
   readonly accepted: boolean;
   readonly searchableNow: boolean;
   readonly hint?: string;
+  // Sync-path-only: counts of K's mem9 accepted / rejected during
+  // validation. Undefined on async-accepted responses.
+  readonly keysInserted?: number;
+  readonly keysRejected?: readonly Mem9RejectedKey[];
 }
 
 export interface Mem9MemoryProviderOptions {
@@ -56,6 +87,11 @@ interface SearchOptions {
 interface StoreOptions {
   readonly content: string;
   readonly sessionId?: string;
+  // Optional agent-generated retrieval keys. When present, mem9 server
+  // validates and persists these instead of running its own
+  // `extractkeys.Extract` LLM call on the content. Empty array is
+  // equivalent to omitted (server falls back to extraction).
+  readonly retrievalKeys?: readonly Mem9RetrievalKey[];
   readonly signal?: AbortSignal;
 }
 
@@ -73,6 +109,13 @@ interface RawSearchResponse {
 
 interface RawStoreResponse {
   readonly status?: unknown;
+  readonly keys_inserted?: unknown;
+  readonly keys_rejected?: unknown;
+}
+
+interface RawRejectedKey {
+  readonly text?: unknown;
+  readonly reason?: unknown;
 }
 
 export class Mem9MemoryProvider {
@@ -146,6 +189,21 @@ export class Mem9MemoryProvider {
     if (options.sessionId !== undefined && options.sessionId.length > 0) {
       body['session_id'] = options.sessionId;
     }
+    // Forward agent-generated keys when present. Wire is snake_case
+    // to match mem9 server's `IngestRequest.Keys []RetrievalKey`
+    // (locked 2026-06-05). Server validates / rejects / inserts;
+    // missing or empty array → server falls back to its own
+    // `extractkeys.Extract` LLM call.
+    if (options.retrievalKeys !== undefined && options.retrievalKeys.length > 0) {
+      body['keys'] = options.retrievalKeys.map((key) => {
+        const wire: Record<string, unknown> = {
+          text: key.text,
+          source: key.source,
+        };
+        if (key.weight !== undefined) wire['weight'] = key.weight;
+        return wire;
+      });
+    }
 
     const response = await this.fetchWithTimeout(
       `${this.baseUrl}/v1alpha2/mem9s/memories`,
@@ -172,6 +230,8 @@ export class Mem9MemoryProvider {
       hint: isAsync
         ? 'Stored asynchronously. Smart extraction is in progress and this memory is not immediately searchable. Do not call Mem9MemorySearch for this content in the next turn.'
         : undefined,
+      keysInserted: parseKeysInserted(data.keys_inserted),
+      keysRejected: parseKeysRejected(data.keys_rejected),
     };
   }
 
@@ -273,6 +333,27 @@ function numericValue(value: unknown): number {
     return Number.isFinite(parsed) ? parsed : -1;
   }
   return -1;
+}
+
+function parseKeysInserted(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return undefined;
+  }
+  return Math.floor(value);
+}
+
+function parseKeysRejected(value: unknown): readonly Mem9RejectedKey[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: Mem9RejectedKey[] = [];
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) continue;
+    const raw = item as RawRejectedKey;
+    const text = typeof raw.text === 'string' ? raw.text : '';
+    const reason = typeof raw.reason === 'string' ? raw.reason : '';
+    if (text.length === 0 && reason.length === 0) continue;
+    out.push({ text, reason });
+  }
+  return out;
 }
 
 function retryHint(resultCount: number, maxScore: number | undefined): string | undefined {
