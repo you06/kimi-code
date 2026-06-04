@@ -349,8 +349,12 @@ function parseKeysRejected(value: unknown): readonly Mem9RejectedKey[] | undefin
     if (typeof item !== 'object' || item === null) continue;
     const raw = item as RawRejectedKey;
     const text = typeof raw.text === 'string' ? raw.text : '';
+    // Skip entries without a `text` field — the agent can't act on
+    // "something was rejected" without knowing which key, so they
+    // don't belong on the agent-visible rejection list. (Lightchaser
+    // nit on PR #5.)
+    if (text.length === 0) continue;
     const reason = typeof raw.reason === 'string' ? raw.reason : '';
-    if (text.length === 0 && reason.length === 0) continue;
     out.push({ text, reason });
   }
   return out;
