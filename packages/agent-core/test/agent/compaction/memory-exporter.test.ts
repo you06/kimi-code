@@ -56,13 +56,11 @@ const sampleJob = () => ({
   sessionId: 'session-x',
   agentId: 'kimi-code',
   summary: 'Compacted summary text.',
-  compactedMessages: [
-    { role: 'user' as const, content: 'old user message' },
-    { role: 'assistant' as const, content: 'old assistant reply' },
-  ],
   metadata: {
-    ingest_source: 'kimi-code-compaction' as const,
+    ingest_source: 'kimi-code-compaction-summary' as const,
     session_id: 'session-x',
+    compaction_id: 'compaction-1',
+    compacted_count: 6,
     tokens_before: 100,
     tokens_after: 30,
     compaction_trigger: 'auto' as const,
@@ -104,8 +102,13 @@ describe('CompactionMemoryExporter', () => {
     expect(job).toMatchObject({
       sessionId: 'session-x',
       agentId: 'kimi-code',
+      summary: 'Compacted summary text.',
       attempts: 0,
-      metadata: { ingest_source: 'kimi-code-compaction' },
+      metadata: {
+        ingest_source: 'kimi-code-compaction-summary',
+        compaction_id: 'compaction-1',
+        compacted_count: 6,
+      },
     });
     expect(job.jobId).toMatch(/^[0-9a-f-]+$/);
     expect(typeof job.enqueuedAt).toBe('number');
@@ -139,11 +142,17 @@ describe('CompactionMemoryExporter', () => {
       agent_id: 'kimi-code',
       session_id: 'session-x',
       mode: 'smart',
-      metadata: { ingest_source: 'kimi-code-compaction', tokens_after: 30 },
+      metadata: {
+        ingest_source: 'kimi-code-compaction-summary',
+        compaction_id: 'compaction-1',
+        compacted_count: 6,
+        tokens_after: 30,
+      },
     });
+    // Phase 3a wire shape: messages-shape POST with the summary as a
+    // single user-role entry, matching `Mem9MemoryProvider.store()`.
     expect(req.body['messages']).toEqual([
-      { role: 'user', content: 'old user message' },
-      { role: 'assistant', content: 'old assistant reply' },
+      { role: 'user', content: 'Compacted summary text.' },
     ]);
     expect(readdirSync(h.queueDir)).toEqual([]);
   });
