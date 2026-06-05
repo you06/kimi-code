@@ -247,7 +247,7 @@ export class Session {
       // (SIGTERM/SIGINT) remains the CLI's concern and should flow
       // through this same session-close path.
       await Promise.allSettled(
-        Array.from(this.agents.values(), async (agent) => agent.dispose()),
+        Array.from(this.readyAgents(), async (agent) => agent.dispose()),
       );
       await this.stopBackgroundTasksOnExit();
       await this.flushMetadata();

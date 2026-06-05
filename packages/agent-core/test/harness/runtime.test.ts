@@ -328,7 +328,7 @@ max_context_size = 100000
     // the URL). @Kaltsit caught a regression on this in Phase 2c
     // review (#mem9-discussion:9dcf4b01); guard it here.
     const session = core.sessions.get(created.id);
-    const mainAgent = session?.agents.get('main');
+    const mainAgent = session?.getReadyAgent('main');
     expect(mainAgent?.fullCompaction.memoryExporter.enabled).toBe(true);
   });
 
