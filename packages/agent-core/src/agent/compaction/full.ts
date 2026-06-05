@@ -384,10 +384,6 @@ export class FullCompaction {
         compactedMessages,
       });
       this.agent.context.applyCompaction(result);
-      // Compaction collapses the prefix into a summary, dropping any goal
-      // reminder that lived there. Re-inject it onto the fresh tail so an active
-      // goal does not silently fall out of context. Append-only; no-op off goal mode.
-      await this.agent.injection.injectGoal();
       // Memory export runs *after* the compaction is committed to
       // context. Enqueue is durable (writes a local file) and
       // non-throwing; the network POST to mem9 happens later in the
@@ -420,6 +416,10 @@ export class FullCompaction {
           compaction_trigger: data.source,
         },
       });
+      // Compaction collapses the prefix into a summary, dropping any goal
+      // reminder that lived there. Re-inject it onto the fresh tail so an active
+      // goal does not silently fall out of context. Append-only; no-op off goal mode.
+      await this.agent.injection.injectGoal();
       this.triggerPostCompactHook(data, result, compactedMessages);
     } catch (error) {
       if (!isAbortError(error)) {
