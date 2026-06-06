@@ -36,6 +36,32 @@ describe('Mem9 memory tools', () => {
     });
   });
 
+  it('instructs the agent to normalize relative time references when an anchor is available', () => {
+    // Tool description ("memory-store.md") is what reaches the model, so the
+    // normalization rule has to be in the rendered description string, not
+    // only in a separate runtime helper. Conditional wording ("when the
+    // surrounding context gives you a reliable anchor") is intentional —
+    // ordinary chat without a session date should NOT trigger date
+    // fabrication. Locked in #mem9-discussion:9dcf4b01 (2026-06-06).
+    const provider = providerWithResponse({ memories: [] });
+    const store = new Mem9MemoryStoreTool(provider, 'session-1');
+
+    expect(store.description).toContain('Temporal normalization');
+    expect(store.description).toMatch(/last week|yesterday|Friday/);
+    expect(store.description).toContain('25 August 2023');
+    expect(store.description).toMatch(/anchor|reliable/);
+    expect(store.description).toMatch(/parens|parentheses/);
+    expect(store.description).toMatch(/preserve.*original|original.*preserve|invent|precision/i);
+    expect(store.description).toMatch(/every Friday|weekly|periodic/i);
+
+    const contentDescription = (
+      store.parameters as { properties: { content: { description: string } } }
+    ).properties.content.description;
+    expect(contentDescription).toMatch(/last week|yesterday|Friday/);
+    expect(contentDescription).toMatch(/anchor|reliable/);
+    expect(contentDescription).toMatch(/invent|precision/);
+  });
+
   it('searches across sessions and surfaces retry hints', async () => {
     const fetchImpl = vi.fn(async (input: string | URL) => {
       const url = new URL(String(input));
