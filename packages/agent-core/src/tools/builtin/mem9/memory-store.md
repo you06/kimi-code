@@ -6,6 +6,24 @@ You MUST call this tool when the user explicitly asks you to remember, save, kee
 
 Store one fact per call as a short declarative statement with an explicit subject. Good content: "Project ships on Friday", "Team uses React for the frontend", "User prefers Python". Avoid vague pronouns, questions, transient task instructions, tool outputs, computations that can be re-derived, and information only relevant to the current turn.
 
+# Temporal normalization
+
+When the conversation contains a relative time reference — "last week", "yesterday", "two days ago", "last Friday", "this morning", "next month" — resolve it to an absolute date before storing the fact, provided the surrounding context gives you a reliable anchor (a system-supplied session date, a date stated earlier in the conversation, or the timestamp of the message itself). A future agent reading this memory in a different session will not know what "last week" referred to, so storing only the relative phrase makes the fact unusable for cross-session recall.
+
+Store the resolved absolute form, and keep the original phrase in parentheses so a future agent searching with the same wording can still match on retrieval keys.
+
+Examples (assume context tells you the reference date is 25 August 2023):
+
+- ❌ "User went hiking last week and had a negative encounter."
+- ✅ "User went hiking around 18 August 2023 ('last week') and had a negative encounter."
+
+- ❌ "User finished the report yesterday."
+- ✅ "User finished the report on 24 August 2023."
+
+If the context does not give you a clear anchor date — for example, an offhand reference like "I worked on this recently" with no system date, no prior dated turn, and no message timestamp — preserve the original wording rather than inventing precision. Storing "User worked on the report recently" is fine when no anchor is available; making up "around 20 August 2023" is not.
+
+Periodic schedules ("every Friday", "weekly", "monthly") are not relative time references and should be stored as-is.
+
 # Generating retrieval keys
 
 Pass `retrieval_keys` with 3–7 short query phrases that describe how a future agent (you or another) will look this fact up. mem9 indexes those keys; recall happens by matching what an agent says against the keys you stored. If you skip this field, mem9 falls back to a generic server-side LLM extractor that does not see your conversation context, your tools, or your system prompt, so the keys it picks tend to be noisier — prefer providing keys yourself.
