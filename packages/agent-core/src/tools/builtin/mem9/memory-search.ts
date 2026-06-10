@@ -72,7 +72,17 @@ export class Mem9MemorySearchTool implements BuiltinTool<Mem9MemorySearchInput> 
 
       builder.write(`Effective query: ${result.effectiveQuery}\n`);
       builder.write('Session scoped: false\n');
-      builder.write(`Available results: ${String(result.availableResultCount)}\n\n`);
+      // "Showing top N of M candidates" instead of the old bare
+      // "Available results: M": M counts the server-side candidate
+      // pool (~3x the requested limit under multi-path RRF), while
+      // only `limit` memories are rendered below. LoCoMo trace review
+      // (#mem9-discussion:037b518a, 2026-06-11) showed the old wording
+      // misled the agent into believing it had already seen all M
+      // candidates, so it never retried with a higher `limit` even
+      // when the shown results were low-confidence.
+      builder.write(
+        `Showing top ${String(result.memories.length)} of ${String(result.availableResultCount)} candidates\n\n`,
+      );
 
       if (result.memories.length === 0) {
         builder.write('No memories found.\n');

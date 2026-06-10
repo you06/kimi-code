@@ -93,9 +93,52 @@ describe('Mem9 memory tools', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const content = toolContentString(result);
     expect(content).toContain('Session scoped: false');
+    expect(content).toContain('Showing top 2 of 2 candidates');
     expect(content).toContain('User also writes TypeScript');
     expect(content).toContain('User prefers Python');
     expect(content).toContain('Retry hint: All matches have low confidence');
+  });
+
+  it('tells the agent when the candidate pool exceeds the shown page', async () => {
+    // The server-side pool is ~3x the requested limit (provider asks
+    // for limit*3 and slices to limit for display). The old header
+    // ("Available results: 15") misled the agent into believing it had
+    // seen all 15 — LoCoMo conv-26 traces showed it never re-searched
+    // with a higher limit even when every shown result was
+    // low-confidence (#mem9-discussion:037b518a). The header must make
+    // the shown-vs-pool split explicit.
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        memories: Array.from({ length: 7 }, (_, i) => ({
+          content: `memory number ${i + 1}`,
+          confidence: 7 - i,
+          score: (7 - i) / 10,
+        })),
+      }),
+    );
+    const provider = new Mem9MemoryProvider({
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    const tool = new Mem9MemorySearchTool(provider);
+
+    const result = await executeTool(tool, {
+      turnId: 't1',
+      toolCallId: 'c-pool',
+      args: { query: 'user memories' },
+      signal,
+    });
+
+    expect(result.isError).toBe(false);
+    const content = toolContentString(result);
+    expect(content).toContain('Showing top 5 of 7 candidates');
+    expect(content).not.toContain('Available results');
+    // Description must teach the two retry levers the trace review
+    // found missing: vary entity/object words (not just verbs), and
+    // raise `limit` when unseen candidates remain.
+    expect(tool.description).toMatch(/ENTITY or OBJECT words/);
+    expect(tool.description).toMatch(/higher `limit`/);
+    expect(tool.description).toContain('Showing top N of M candidates');
   });
 
   it('stores memories with the Kimi session id and async hint', async () => {
