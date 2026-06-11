@@ -161,6 +161,44 @@ describe('Mem9 memory tools', () => {
     expect(content).not.toContain('Retry hint');
   });
 
+  it('does not render storage age on search results', async () => {
+    // The server's relative_age is derived from the row's updated_at —
+    // STORAGE age, not fact time. Rendering it ("Age: 13 hours ago")
+    // planted a now-anchored relative time on every result: a fact
+    // about 2023 ingested yesterday read as recent, misleading
+    // temporal reasoning. Fact time lives in the content's normalized
+    // absolute dates (#mem9-discussion:037b518a, 2026-06-12).
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        memories: [
+          {
+            content: 'User went hiking around 18 August 2023.',
+            score: 0.05,
+            relative_age: '13 hours ago',
+          },
+        ],
+      }),
+    );
+    const provider = new Mem9MemoryProvider({
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    const tool = new Mem9MemorySearchTool(provider);
+
+    const result = await executeTool(tool, {
+      turnId: 't1',
+      toolCallId: 'c-age',
+      args: { query: 'user hiking' },
+      signal,
+    });
+
+    expect(result.isError).toBe(false);
+    const content = toolContentString(result);
+    expect(content).toContain('User went hiking around 18 August 2023.');
+    expect(content).not.toContain('Age:');
+    expect(content).not.toContain('13 hours ago');
+  });
+
   it('keeps the retry hint for the zero-results case only', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ memories: [] }));
     const provider = new Mem9MemoryProvider({

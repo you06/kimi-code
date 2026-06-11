@@ -101,9 +101,17 @@ export class Mem9MemorySearchTool implements BuiltinTool<Mem9MemorySearchInput> 
         if (memory.memoryType !== undefined) {
           builder.write(`Type: ${memory.memoryType}\n`);
         }
-        if (memory.relativeAge !== undefined) {
-          builder.write(`Age: ${memory.relativeAge}\n`);
-        }
+        // memory.relativeAge (server relative_age, derived from the row's
+        // updated_at) is deliberately NOT rendered. It is STORAGE age —
+        // "how long since this row was written" relative to the moment of
+        // the search — not the time of the remembered fact. Rendering it
+        // as "Age: 13 hours ago" planted a now-anchored relative time on
+        // every result and misled temporal reasoning: a fact about 2023
+        // ingested yesterday read as recent. Fact time lives in the
+        // memory content's normalized absolute dates. If write-recency is
+        // ever needed for conflict resolution, surface it as an absolute
+        // date, never a relative phrase (#mem9-discussion:037b518a,
+        // 2026-06-12).
       });
 
       if (result.retryHint !== undefined) {
