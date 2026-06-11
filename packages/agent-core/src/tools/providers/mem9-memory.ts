@@ -166,17 +166,12 @@ export class Mem9MemoryProvider {
         return numericValue(right.score) - numericValue(left.score);
       });
     const memories = sorted.slice(0, options.limit);
-    const maxScore = memories.reduce<number | undefined>((current, memory) => {
-      const score = numericValue(memory.score);
-      if (score < 0) return current;
-      return current === undefined || score > current ? score : current;
-    }, undefined);
 
     return {
       effectiveQuery: options.query,
       memories,
       availableResultCount: raw.length,
-      retryHint: retryHint(memories.length, maxScore),
+      retryHint: retryHint(memories.length),
     };
   }
 
@@ -371,17 +366,26 @@ function parseKeysRejected(value: unknown): readonly Mem9RejectedKey[] | undefin
   return out;
 }
 
-function retryHint(resultCount: number, maxScore: number | undefined): string | undefined {
+// Only the zero-results case gets a retry hint. There used to be a
+// second hint, "All matches have low confidence", fired on
+// `maxScore < 0.3` — but mem9's K=>V recall scores are RRF rank-fusion
+// values whose non-fast-path ceiling is ~4/(rrfK+1) ≈ 0.066, so the
+// 0.3 cutoff classified essentially EVERY normal search as
+// low-confidence (98%+ of searches in LoCoMo traces carried the hint,
+// teaching the agent to distrust perfectly good results and
+// over-abstain). RRF scores are ordering signals, not confidences; no
+// absolute threshold on them is meaningful. If a real confidence
+// signal ever arrives, it must come from the server as a separate
+// calibrated field, not be inferred client-side from RRF mass.
+// Diagnosed in #mem9-discussion:b5c8b74a (2026-06-11). The
+// shown-vs-pool header ("Showing top N of M candidates") plus the
+// tool-description retry levers already cover the "results may be
+// incomplete" guidance without crying wolf on every call.
+function retryHint(resultCount: number): string | undefined {
   if (resultCount === 0) {
     return (
       'No memories matched. Possible fixes: (1) rephrase as a short declarative ' +
       'statement instead of a question; (2) try broader or different keywords.'
-    );
-  }
-  if (maxScore !== undefined && maxScore < 0.3) {
-    return (
-      'All matches have low confidence. The query may not align with how facts ' +
-      'were stored. Consider rephrasing as a declarative statement or using more specific keywords.'
     );
   }
   return undefined;

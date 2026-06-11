@@ -144,7 +144,34 @@ describe('Mem9 memory tools', () => {
     expect(content).toContain('Showing top 2 of 2 candidates');
     expect(content).toContain('User also writes TypeScript');
     expect(content).toContain('User prefers Python');
-    expect(content).toContain('Retry hint: All matches have low confidence');
+    // RRF scores are ordering signals, not confidences: the old
+    // `maxScore < 0.3` "All matches have low confidence" hint fired on
+    // essentially every normal K=>V search (non-fast-path RRF ceiling
+    // is ~0.066) and trained the agent to distrust good results.
+    // Results present → no retry hint, regardless of score magnitude.
+    expect(content).not.toContain('low confidence');
+    expect(content).not.toContain('Retry hint');
+  });
+
+  it('keeps the retry hint for the zero-results case only', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ memories: [] }));
+    const provider = new Mem9MemoryProvider({
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    const tool = new Mem9MemorySearchTool(provider);
+
+    const result = await executeTool(tool, {
+      turnId: 't1',
+      toolCallId: 'c-zero',
+      args: { query: 'nothing stored about this' },
+      signal,
+    });
+
+    expect(result.isError).toBe(false);
+    const content = toolContentString(result);
+    expect(content).toContain('No memories found.');
+    expect(content).toContain('Retry hint: No memories matched');
   });
 
   it('tells the agent when the candidate pool exceeds the shown page', async () => {
