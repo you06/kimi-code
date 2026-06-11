@@ -18,12 +18,13 @@ Store only facts that are traceable to what was actually said in the conversatio
 
 When the conversation contains a relative time reference — "last week", "yesterday", "two days ago", "last Friday", "this morning", "next month" — resolve it to an absolute date before storing the fact, provided the surrounding context gives you a reliable anchor (a system-supplied session date, a date stated earlier in the conversation, or the timestamp of the message itself). A future agent reading this memory in a different session will not know what "last week" referred to, so storing only the relative phrase makes the fact unusable for cross-session recall.
 
-Store the resolved absolute form, and keep the original phrase in parentheses so a future agent searching with the same wording can still match on retrieval keys.
+Store ONLY the resolved absolute form. Do not keep the original relative phrase — not even in parentheses. A relative phrase's meaning dies at store time: a future reader's "last Tuesday" is anchored to a different "now" than yours, so retained relative wording can only mislead — it baits later retrieval into false matches and baits the answering model into recomputing dates against the wrong present.
 
 Examples (assume context tells you the reference date is 25 August 2023):
 
 - ❌ "User went hiking last week and had a negative encounter."
-- ✅ "User went hiking around 18 August 2023 ('last week') and had a negative encounter."
+- ❌ "User went hiking around 18 August 2023 ('last week') and had a negative encounter."
+- ✅ "User went hiking around 18 August 2023 and had a negative encounter."
 
 - ❌ "User finished the report yesterday."
 - ✅ "User finished the report on 24 August 2023."

@@ -56,7 +56,7 @@ export const Mem9MemoryStoreInputSchema = z.object({
       'The fact to remember, written as a short declarative statement with an explicit subject. Store one fact per call. ' +
         'Resolve relative time references ("last week", "yesterday", "Friday") to absolute dates when the surrounding ' +
         'context (a system-supplied session date, an earlier dated turn, or the message timestamp) gives a reliable ' +
-        'anchor — keep the original phrase in parens. With no anchor, preserve the original wording rather than invent ' +
+        'anchor — store only the absolute form, dropping the relative phrase. With no anchor, preserve the original wording rather than invent ' +
         'precision. Periodic schedules ("every Friday", "weekly") are not relative references and stay as-is.',
     ),
   retrieval_keys: z

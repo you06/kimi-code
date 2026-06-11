@@ -50,7 +50,15 @@ describe('Mem9 memory tools', () => {
     expect(store.description).toMatch(/last week|yesterday|Friday/);
     expect(store.description).toContain('25 August 2023');
     expect(store.description).toMatch(/anchor|reliable/);
-    expect(store.description).toMatch(/parens|parentheses/);
+    // The original relative phrase must NOT be retained alongside the
+    // absolute date — not even parenthesized. A stored "('last Tues')"
+    // is anchored to a dead "now": it false-matches future
+    // relative-phrased queries and baits the answering model into
+    // recomputing against the wrong present. Reversed from the first
+    // version of this rule per @tmgg06, #mem9-discussion:037b518a
+    // (2026-06-11).
+    expect(store.description).toMatch(/Store ONLY the resolved absolute form/);
+    expect(store.description).toMatch(/not even in parentheses/i);
     expect(store.description).toMatch(/preserve.*original|original.*preserve|invent|precision/i);
     expect(store.description).toMatch(/every Friday|weekly|periodic/i);
 
