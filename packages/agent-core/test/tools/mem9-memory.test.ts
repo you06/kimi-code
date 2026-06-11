@@ -62,6 +62,29 @@ describe('Mem9 memory tools', () => {
     expect(contentDescription).toMatch(/invent|precision/);
   });
 
+  it('instructs the agent to preserve specifics verbatim and stay traceable', () => {
+    // Store-quality rules from the LoCoMo conv-26 trace + DB review
+    // (#mem9-discussion:037b518a, 2026-06-11). Two write-side failure
+    // modes that no recall-side tuning can repair:
+    //  - generalization loss: "a cup she made" stored as "made pottery"
+    //    drops the very word a future question asks about (q48);
+    //  - write-side hallucination: details that were never said get
+    //    baked into a memory (the "religious conservatives" case).
+    // Both rules are deliberately production-generic; the LoCoMo
+    // store_hack prompt must NOT duplicate them (single source).
+    const provider = providerWithResponse({ memories: [] });
+    const store = new Mem9MemoryStoreTool(provider, 'session-1');
+
+    expect(store.description).toContain('# Specificity');
+    expect(store.description).toMatch(/verbatim/);
+    expect(store.description).toMatch(/do not generalize/i);
+    expect(store.description).toContain('cup');
+
+    expect(store.description).toContain('# Traceability');
+    expect(store.description).toMatch(/never add details/i);
+    expect(store.description).toMatch(/leave the detail out/i);
+  });
+
   it('searches across sessions and surfaces retry hints', async () => {
     const fetchImpl = vi.fn(async (input: string | URL) => {
       const url = new URL(String(input));

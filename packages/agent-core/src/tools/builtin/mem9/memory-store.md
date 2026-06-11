@@ -6,6 +6,14 @@ You MUST call this tool when the user explicitly asks you to remember, save, kee
 
 Store one fact per call as a short declarative statement with an explicit subject. Good content: "Project ships on Friday", "Team uses React for the frontend", "User prefers Python". Avoid vague pronouns, questions, transient task instructions, tool outputs, computations that can be re-derived, and information only relevant to the current turn.
 
+# Specificity
+
+Preserve specific object, place, and name words verbatim in the fact — do not generalize details away. "She made a cup in pottery class" must not become "she made pottery": the word "cup" is exactly what a future question will ask about, and once it is generalized at store time no amount of searching can recover it. When a statement mentions several distinct items, keep every distinct item word in the stored fact.
+
+# Traceability
+
+Store only facts that are traceable to what was actually said in the conversation. Never add details, attributions, or explanations that were not stated — if the conversation says "some people upset her on a hike", store that, not a guess about who those people were. When in doubt whether a detail was stated or inferred, leave the detail out.
+
 # Temporal normalization
 
 When the conversation contains a relative time reference — "last week", "yesterday", "two days ago", "last Friday", "this morning", "next month" — resolve it to an absolute date before storing the fact, provided the surrounding context gives you a reliable anchor (a system-supplied session date, a date stated earlier in the conversation, or the timestamp of the message itself). A future agent reading this memory in a different session will not know what "last week" referred to, so storing only the relative phrase makes the fact unusable for cross-session recall.
