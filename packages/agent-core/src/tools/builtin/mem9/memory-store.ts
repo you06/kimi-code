@@ -68,7 +68,10 @@ export const Mem9MemoryStoreInputSchema = z.object({
       'Retrieval keys for this fact: 3–7 short query phrases (≤ 8 words each) that mix predicate fragments ' +
         '(like "user works at") and named entities (like "Acme Robotics"). When the fact contains a named ' +
         'entity that may be searched for in another language, add 1–2 cross-language keys with ' +
-        '`source: "agent_translation"`. mem9 server rejects single-token generic stop-list words ' +
+        '`source: "agent_translation"`. When the fact is an instance of a recurring category (activity, ' +
+        'hobby, place type, preference), add 1–2 category keys with the subject name ("Melanie activities") ' +
+        'so future aggregate searches match without guessing the specific word. mem9 server rejects ' +
+        'single-token generic stop-list words ' +
         '(`user`, `home`, `team`, `project`, `company`, `name`, `date`, `time`, `place`, `work`); each key ' +
         'must share at least one token with the fact (translation keys are exempt). Omitting this field ' +
         "falls back to mem9's generic server-side key extraction, which has no access to the agent's " +

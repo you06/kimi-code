@@ -85,6 +85,31 @@ describe('Mem9 memory tools', () => {
     expect(store.description).toMatch(/leave the detail out/i);
   });
 
+  it('teaches category keys so agent-keyed stores stay aggregate-searchable', () => {
+    // Server-side category-key generation (mem9 8e9c4dc) only runs in
+    // the extractkeys fallback path; ~97% of LoCoMo stores carry
+    // agent-provided retrieval_keys and skip it entirely
+    // (#mem9-discussion:037b518a). The agent guidance must therefore
+    // teach category keys itself — including the subject name, which
+    // both anchors the key and satisfies the server's token-overlap
+    // validation.
+    const provider = providerWithResponse({ memories: [] });
+    const store = new Mem9MemoryStoreTool(provider, 'session-1');
+
+    expect(store.description).toMatch(/CATEGORY keys/);
+    expect(store.description).toContain('Melanie activities');
+    expect(store.description).toMatch(/subject'?s name/i);
+    expect(store.description).toMatch(/skip category keys for one-off facts/i);
+
+    const keysDescription = (
+      store.parameters as {
+        properties: { retrieval_keys: { description: string } };
+      }
+    ).properties.retrieval_keys.description;
+    expect(keysDescription).toMatch(/category keys/i);
+    expect(keysDescription).toContain('Melanie activities');
+  });
+
   it('searches across sessions and surfaces retry hints', async () => {
     const fetchImpl = vi.fn(async (input: string | URL) => {
       const url = new URL(String(input));

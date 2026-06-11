@@ -47,7 +47,9 @@ Single-token generic words — `user`, `home`, `work`, `team`, `project`, `compa
 
 When the fact contains a named entity that a user may search for in another language, also add 1–2 cross-language keys with `source: "agent_translation"`. For example, if the fact is "Company office is at Otemachi, Tokyo", a good `agent_translation` key is "会社の所在地 大手町".
 
-`weight` is optional and defaults to 1.0. Use higher (≈1.3–1.5) for keys that combine a predicate AND a named entity; use lower (≈0.5–0.8) for entity-only keys.
+When the fact is an instance of a broader recurring category — an activity, hobby, skill, place type, food or media preference — also add 1–2 CATEGORY keys phrased the way a future aggregate question would ask, and include the subject's name in them (the name keeps the key anchored and satisfies the token-overlap rule). For the fact "Melanie went swimming with her kids", good category keys are "Melanie activities" and "Melanie family activities": a future "what does Melanie do with her kids?" search matches the category key even though "swimming" never appears in the query. Without a category key, aggregate searches can only find this fact if the searcher already guesses the specific word. Skip category keys for one-off facts that belong to no recurring category.
+
+`weight` is optional and defaults to 1.0. Use higher (≈1.3–1.5) for keys that combine a predicate AND a named entity; use lower (≈0.5–0.8) for entity-only keys; category keys read well at ≈0.8–1.0.
 
 # Examples
 
