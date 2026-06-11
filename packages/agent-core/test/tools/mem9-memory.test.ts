@@ -110,7 +110,7 @@ describe('Mem9 memory tools', () => {
     expect(keysDescription).toContain('Melanie activities');
   });
 
-  it('searches across sessions and surfaces retry hints', async () => {
+  it('searches across sessions without flagging low scores as low confidence', async () => {
     const fetchImpl = vi.fn(async (input: string | URL) => {
       const url = new URL(String(input));
       expect(url.pathname).toBe('/v1alpha2/mem9s/memories');
