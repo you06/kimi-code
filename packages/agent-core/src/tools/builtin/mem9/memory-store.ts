@@ -69,7 +69,7 @@ export const Mem9MemoryStoreInputSchema = z.object({
         '(like "user works at") and named entities (like "Acme Robotics"). When the fact contains a named ' +
         'entity that may be searched for in another language, add 1–2 cross-language keys with ' +
         '`source: "agent_translation"`. When the fact is an instance of a recurring category (activity, ' +
-        'hobby, place type, preference), add 1–2 category keys with the subject name ("Melanie activities") ' +
+        'hobby, place type, preference), add 1–2 category keys with the subject name ("Daniel activities") ' +
         'so future aggregate searches match without guessing the specific word. mem9 server rejects ' +
         'single-token generic stop-list words ' +
         '(`user`, `home`, `team`, `project`, `company`, `name`, `date`, `time`, `place`, `work`); each key ' +

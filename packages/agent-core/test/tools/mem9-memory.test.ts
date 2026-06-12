@@ -86,7 +86,7 @@ describe('Mem9 memory tools', () => {
     expect(store.description).toContain('# Specificity');
     expect(store.description).toMatch(/verbatim/);
     expect(store.description).toMatch(/do not generalize/i);
-    expect(store.description).toContain('cup');
+    expect(store.description).toContain('spoon');
 
     expect(store.description).toContain('# Traceability');
     expect(store.description).toMatch(/never add details/i);
@@ -117,7 +117,29 @@ describe('Mem9 memory tools', () => {
     expect(store.description).toMatch(/speaker is not automatically the subject/i);
     expect(store.description).toMatch(/fabricates a biography/i);
     expect(store.description).toMatch(/scope words/i);
-    expect(store.description).toMatch(/dog face/);
+    expect(store.description).toMatch(/sailboat/);
+  });
+
+  it('keeps known benchmark-contamination phrases out of agent-visible descriptions', () => {
+    // Benchmark hygiene guard (#mem9-discussion:b3075037, 2026-06-12):
+    // tool descriptions sit in the answering agent's context during
+    // evaluation runs, so a description example that quotes evaluation
+    // gold text becomes an answer-contamination channel — any later
+    // improvement on the affected questions is non-attributable. These
+    // distinguishing phrases leaked once via bucket-evidence examples
+    // and were swapped for structurally equivalent generic ones; this
+    // pin keeps them from returning. (Test comments never reach the
+    // agent; only the description strings below do.)
+    const denylist =
+      /dog face|charity race|pottery class|self-care|other children|researching agencies|summer plans/i;
+    const provider = providerWithResponse({ memories: [] });
+    const store = new Mem9MemoryStoreTool(provider, 'session-1');
+    const search = new Mem9MemorySearchTool(provider);
+
+    expect(store.description).not.toMatch(denylist);
+    expect(search.description).not.toMatch(denylist);
+    const params = JSON.stringify(store.parameters) + JSON.stringify(search.parameters);
+    expect(params).not.toMatch(denylist);
   });
 
   it('teaches category keys so agent-keyed stores stay aggregate-searchable', () => {
@@ -132,7 +154,7 @@ describe('Mem9 memory tools', () => {
     const store = new Mem9MemoryStoreTool(provider, 'session-1');
 
     expect(store.description).toMatch(/CATEGORY keys/);
-    expect(store.description).toContain('Melanie activities');
+    expect(store.description).toContain('Daniel activities');
     expect(store.description).toMatch(/subject'?s name/i);
     expect(store.description).toMatch(/skip category keys for one-off facts/i);
 
@@ -142,7 +164,7 @@ describe('Mem9 memory tools', () => {
       }
     ).properties.retrieval_keys.description;
     expect(keysDescription).toMatch(/category keys/i);
-    expect(keysDescription).toContain('Melanie activities');
+    expect(keysDescription).toContain('Daniel activities');
   });
 
   it('searches across sessions without flagging low scores as low confidence', async () => {
