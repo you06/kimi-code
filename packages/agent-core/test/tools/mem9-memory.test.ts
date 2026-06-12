@@ -93,6 +93,33 @@ describe('Mem9 memory tools', () => {
     expect(store.description).toMatch(/leave the detail out/i);
   });
 
+  it('teaches frame retention and strict attribution (R12 store-fidelity buckets)', () => {
+    // R12 error bucketing put store fidelity at 47% of all judged
+    // misses, concentrated in three write-side shapes no recall-side
+    // work can repair (#mem9-discussion:b3075037, 2026-06-12):
+    //  - context-link loss: "self-care is important" stored without
+    //    "after the charity race" answers a different question;
+    //  - detail loss: the cup's dog-face decoration dropped;
+    //  - attribution distortion: a relative/artwork/pet attributed to
+    //    the wrong person (one such distortion scored zero on two
+    //    questions at once), or scope words ("other children")
+    //    excluding people the speaker included.
+    // Examples in the description are deliberately genericized — same
+    // structure as the observed failures, different surface.
+    const provider = providerWithResponse({ memories: [] });
+    const store = new Mem9MemoryStoreTool(provider, 'session-1');
+
+    expect(store.description).toMatch(/connecting frame/i);
+    expect(store.description).toMatch(/occasion, cause, or purpose/i);
+    expect(store.description).toMatch(/answers a different question/i);
+
+    expect(store.description).toContain('# Attribution');
+    expect(store.description).toMatch(/speaker is not automatically the subject/i);
+    expect(store.description).toMatch(/fabricates a biography/i);
+    expect(store.description).toMatch(/scope words/i);
+    expect(store.description).toMatch(/dog face/);
+  });
+
   it('teaches category keys so agent-keyed stores stay aggregate-searchable', () => {
     // Server-side category-key generation (mem9 8e9c4dc) only runs in
     // the extractkeys fallback path; ~97% of LoCoMo stores carry

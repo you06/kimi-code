@@ -8,7 +8,13 @@ Store one fact per call as a short declarative statement with an explicit subjec
 
 # Specificity
 
-Preserve specific object, place, and name words verbatim in the fact — do not generalize details away. "She made a cup in pottery class" must not become "she made pottery": the word "cup" is exactly what a future question will ask about, and once it is generalized at store time no amount of searching can recover it. When a statement mentions several distinct items, keep every distinct item word in the stored fact.
+Preserve specific object, place, and name words verbatim in the fact — do not generalize details away. "She made a cup in pottery class" must not become "she made pottery": the word "cup" is exactly what a future question will ask about, and once it is generalized at store time no amount of searching can recover it. When a statement mentions several distinct items, keep every distinct item word in the stored fact — including decorations and depictions ("a cup with a dog face on it", not just "a cup").
+
+Keep the connecting frame that situates a fact: the occasion, cause, or purpose it was said with. "Self-care is important to her" stored without "after running the charity race" loses what the reflection was about; "researching agencies" without "as part of her summer plans" loses the plan it belongs to. The frame words are often exactly what a future question asks for, and a fact stripped of its frame answers a different question than the one that will be asked.
+
+# Attribution
+
+Attribute every fact to the person it is actually about — the speaker is not automatically the subject. If the user talks about their friend's grandmother coming from Ireland, that fact belongs to the friend's family; storing it as the user's grandmother (or "the user is from Ireland") fabricates a biography. Possessions, artworks, pets, and relatives mentioned in a conversation each belong to one specific person: name that person in the stored fact, and re-check the attribution before storing. Scope words must also match what was said — "her other children were scared" excludes a child the speaker actually included, and "all"/"only"/"except" change who a fact covers.
 
 # Traceability
 
