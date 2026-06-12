@@ -22,6 +22,13 @@ export interface Mem9MemoryResult {
   readonly score?: number | string;
   readonly memoryType?: string;
   readonly relativeAge?: string;
+  /**
+   * Server-side multi-query provenance (`matched_queries`): 0-based
+   * indexes of the request's `q` params that recalled this memory.
+   * Present only on multi-query responses from servers that support
+   * repeated `q` (mem9 d2595dc+).
+   */
+  readonly matchedQueries?: readonly number[];
 }
 
 export interface Mem9MemorySearchResult {
@@ -128,6 +135,7 @@ interface RawSearchMemory {
   readonly score?: unknown;
   readonly memory_type?: unknown;
   readonly relative_age?: unknown;
+  readonly matched_queries?: unknown;
 }
 
 interface RawSearchResponse {
@@ -203,19 +211,86 @@ export class Mem9MemoryProvider {
   }
 
   /**
-   * Batch facet search: run every query in parallel through the
-   * normal single-query path, then merge results into one
-   * deduplicated, provenance-tagged list.
+   * Batch facet search. Preferred wire: ONE request with repeated `q`
+   * params (mem9 d2595dc+) — the server runs each query through a
+   * DEEPER per-query pool (limit×2 into RecallKV), merges with a
+   * round-robin per-facet quota, caps the window at limit×2 total,
+   * and tags each memory with `matched_queries` provenance. That
+   * server merge addresses both R11 findings: attention dilution from
+   * an unbounded client-side merge (mean 16.6 / max 68 shown), and
+   * per-query pools cut shallow by the client limit
+   * (#mem9-discussion:037b518a, 2026-06-12).
    *
-   * Motivation (#mem9-discussion:037b518a, R9/R9b/R10, 2026-06-12):
-   * multi-item questions fail when the model stops searching after
-   * the first satisfying result — memories for different facets of
-   * one topic rank differently per query. Prose guidance alone
-   * triggered this behavior unreliably (an identical run pair showed
-   * the same question searched 19× then 5×). Batch search moves the
-   * completeness guarantee into code: once the model decides to
-   * facet-search, ALL submitted variants run, and the merge/dedup is
-   * deterministic.
+   * Compatibility fallback: an older server silently reads only the
+   * FIRST repeated `q`, which would degrade a facet batch to a
+   * single-query search. New servers always populate
+   * `matched_queries` on multi-query responses, so its absence across
+   * the whole response (including the empty response, which is
+   * ambiguous) routes to the legacy client-side parallel fan-out.
+   */
+  async searchMany(options: BatchSearchOptions): Promise<Mem9MemoryBatchSearchResult> {
+    if (options.queries.length === 1) {
+      return this.searchManyClientSide(options);
+    }
+    const url = new URL(`${this.baseUrl}/v1alpha2/mem9s/memories`);
+    for (const query of options.queries) {
+      url.searchParams.append('q', query);
+    }
+    // Raw limit, NOT limit*3: the multi-query server path manages its
+    // own pool depth (limit×2 per query) and window cap (limit×2
+    // total). Sending an inflated limit would inflate the window the
+    // server hands back.
+    url.searchParams.set('limit', String(options.limit));
+    if (options.scanAll ?? this.scanAll) {
+      url.searchParams.set('scanAll', 'true');
+    }
+
+    const response = await this.fetchWithTimeout(
+      url,
+      { method: 'GET', headers: this.headers() },
+      SEARCH_TIMEOUT_MS,
+      options.signal,
+    );
+    await assertOk(response, 'mem9 search');
+
+    const data = (await response.json()) as RawSearchResponse;
+    const raw = Array.isArray(data.memories) ? data.memories : [];
+    const memories = raw
+      .map(normalizeMemory)
+      .filter((memory): memory is Mem9MemoryResult => memory !== undefined);
+
+    const anyProvenance = memories.some(
+      (memory) => memory.matchedQueries !== undefined && memory.matchedQueries.length > 0,
+    );
+    if (!anyProvenance) {
+      // Old server (or ambiguous empty response): it ran only the
+      // first query. Re-run as legacy client-side fan-out so every
+      // facet variant still executes.
+      return this.searchManyClientSide(options);
+    }
+
+    // Server order IS the round-robin quota merge — preserve it, do
+    // not re-sort by score here.
+    const entries = memories.map<Mem9MemoryBatchEntry>((memory) => ({
+      ...memory,
+      foundByQueryIndexes: [...(memory.matchedQueries ?? [])].sort((a, b) => a - b),
+    }));
+
+    return {
+      queries: options.queries,
+      memories: entries,
+      // Single merged response: per-query pool sizes are not exposed
+      // on this wire; the tool omits the pools-total parenthetical
+      // when this is empty.
+      perQueryAvailableCounts: [],
+      retryHint: retryHint(entries.length),
+    };
+  }
+
+  /**
+   * Legacy batch path: K parallel single-query requests merged
+   * client-side. Used when the server predates repeated-`q` support
+   * (no `matched_queries` in a multi-query response).
    *
    * Merge semantics: dedup by memory `id` when the server provides
    * one, otherwise by trimmed content. The first occurrence wins for
@@ -224,7 +299,9 @@ export class Mem9MemoryProvider {
    * surfaced it. Cross-query ordering: confidence desc, then score
    * desc — the same comparator as the single path.
    */
-  async searchMany(options: BatchSearchOptions): Promise<Mem9MemoryBatchSearchResult> {
+  private async searchManyClientSide(
+    options: BatchSearchOptions,
+  ): Promise<Mem9MemoryBatchSearchResult> {
     const results = await Promise.all(
       options.queries.map((query) =>
         this.search({
@@ -419,6 +496,9 @@ function normalizeMemory(raw: unknown): Mem9MemoryResult | undefined {
     typeof item.relative_age === 'string' && item.relative_age.length > 0
       ? item.relative_age
       : undefined;
+  const matchedQueries = Array.isArray(item.matched_queries)
+    ? item.matched_queries.filter((value): value is number => typeof value === 'number')
+    : undefined;
   return {
     id,
     content,
@@ -426,6 +506,7 @@ function normalizeMemory(raw: unknown): Mem9MemoryResult | undefined {
     score: numberOrString(item.score),
     memoryType,
     relativeAge,
+    matchedQueries,
   };
 }
 

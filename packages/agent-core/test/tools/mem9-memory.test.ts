@@ -301,8 +301,10 @@ describe('Mem9 memory tools', () => {
     });
 
     expect(result.isError).toBe(false);
-    // Primary + first 4 variants run; the 5th variant is dropped.
-    expect(fetchImpl).toHaveBeenCalledTimes(5);
+    // Empty multi-q response is provenance-ambiguous → 1 repeated-q
+    // attempt + 5 single-query fallback calls; the 6th variant is
+    // dropped before either path.
+    expect(fetchImpl).toHaveBeenCalledTimes(6);
     const content = toolContentString(result);
     expect(content).toContain('#5: Melanie music');
     expect(content).not.toContain('Melanie food');
@@ -324,17 +326,62 @@ describe('Mem9 memory tools', () => {
     expect(queriesDescription).toMatch(/waste the batch/i);
   });
 
-  it('fans out batch queries in parallel and merges with provenance', async () => {
-    // Code-guaranteed facet completeness (#mem9-discussion:037b518a,
-    // 2026-06-12): once the model submits facet variants, ALL of them
-    // run — the R9/R9b instability ("same question searched 19x then
-    // 5x between identical runs") cannot recur inside one call. Dedup
-    // is by memory id; merged entries carry which queries found them.
-    const calls: string[] = [];
+  it('sends one repeated-q request and renders server-merged provenance', async () => {
+    // Preferred wire (mem9 d2595dc+): ONE request carries every facet
+    // variant as a repeated `q` param; the server deep-pools each
+    // query, quota-merges round-robin, caps the window, and tags
+    // matched_queries. Client preserves server order — the quota
+    // merge IS the ordering (#mem9-discussion:037b518a, 2026-06-12).
     const fetchImpl = vi.fn(async (input: string | URL) => {
       const url = new URL(String(input));
-      const q = url.searchParams.get('q') ?? '';
-      calls.push(q);
+      expect(url.searchParams.getAll('q')).toEqual(['Melanie pottery', 'Melanie swimming']);
+      // Raw limit, not limit*3: the server manages multi-query depth.
+      expect(url.searchParams.get('limit')).toBe('5');
+      return jsonResponse({
+        memories: [
+          { id: 'm-3', content: 'Melanie went swimming with her kids.', score: 0.062, matched_queries: [1] },
+          { id: 'm-1', content: 'Melanie made a plate in pottery class.', score: 0.06, matched_queries: [0] },
+          { id: 'm-2', content: 'Melanie enjoys arts and crafts.', score: 0.058, matched_queries: [0, 1] },
+        ],
+      });
+    });
+    const provider = new Mem9MemoryProvider({
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    const tool = new Mem9MemorySearchTool(provider);
+
+    const result = await executeTool(tool, {
+      turnId: 't1',
+      toolCallId: 'c-batch',
+      args: { query: 'Melanie pottery', queries: ['Melanie swimming'] },
+      signal,
+    });
+
+    expect(result.isError).toBe(false);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const content = toolContentString(result);
+    expect(content).toContain('#1: Melanie pottery');
+    expect(content).toContain('#2: Melanie swimming');
+    expect(content).toContain('3 unique memories across 2 queries');
+    // Server-merged wire exposes no per-query pools.
+    expect(content).not.toContain('candidate pools total');
+    expect(content).toContain('Found by: #1, #2');
+    // Server order preserved: swimming (quota round-robin head) first.
+    expect(content.indexOf('swimming')).toBeLessThan(content.indexOf('plate in pottery'));
+  });
+
+  it('falls back to client-side fan-out when the server lacks repeated-q support', async () => {
+    // An old server silently reads only the FIRST repeated q — a
+    // facet batch would degrade to a single search. New servers
+    // always tag matched_queries on multi-query responses, so its
+    // absence routes to the legacy parallel fan-out and every variant
+    // still runs.
+    const calls: string[][] = [];
+    const fetchImpl = vi.fn(async (input: string | URL) => {
+      const url = new URL(String(input));
+      calls.push(url.searchParams.getAll('q'));
+      const q = url.searchParams.getAll('q')[0] ?? '';
       if (q === 'Melanie pottery') {
         return jsonResponse({
           memories: [
@@ -358,24 +405,21 @@ describe('Mem9 memory tools', () => {
 
     const result = await executeTool(tool, {
       turnId: 't1',
-      toolCallId: 'c-batch',
+      toolCallId: 'c-fallback',
       args: { query: 'Melanie pottery', queries: ['Melanie swimming'] },
       signal,
     });
 
     expect(result.isError).toBe(false);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(calls).toContain('Melanie pottery');
-    expect(calls).toContain('Melanie swimming');
+    // 1 repeated-q attempt + 2 single-query fallback calls.
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(calls[0]).toEqual(['Melanie pottery', 'Melanie swimming']);
     const content = toolContentString(result);
-    expect(content).toContain('#1: Melanie pottery');
-    expect(content).toContain('#2: Melanie swimming');
     expect(content).toContain('3 unique memories across 2 queries');
-    // m-2 appears once, found by both queries, with the better score.
+    // Client-side merge: m-2 deduped, found by both, best score kept.
     expect(content.match(/arts and crafts/g)).toHaveLength(1);
     expect(content).toContain('Found by: #1, #2');
     expect(content).toContain('Score: 0.058');
-    expect(content).not.toContain('Score: 0.05\n');
   });
 
   it('keeps the single-query output shape when no variants are given', async () => {
@@ -424,8 +468,10 @@ describe('Mem9 memory tools', () => {
     });
 
     expect(result.isError).toBe(false);
-    // Duplicate variant collapsed: only 2 distinct queries fetched.
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    // Duplicate variant collapsed to 2 distinct queries; the
+    // no-provenance response routes to fallback: 1 repeated-q attempt
+    // + 2 single-query calls.
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
     const content = toolContentString(result);
     expect(content).toContain('1 unique memories across 2 queries');
     expect(content.match(/enjoys camping/g)).toHaveLength(1);

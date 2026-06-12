@@ -182,10 +182,16 @@ export class Mem9MemorySearchTool implements BuiltinTool<Mem9MemorySearchInput> 
         );
       }
       builder.write('Session scoped: false\n');
+      // Server-merged responses (repeated-q wire) don't expose
+      // per-query pool sizes — omit the parenthetical there.
       const totalPool = result.perQueryAvailableCounts.reduce((sum, count) => sum + count, 0);
+      const poolSuffix =
+        result.perQueryAvailableCounts.length > 0
+          ? ` (candidate pools total ${String(totalPool)})`
+          : '';
       builder.write(
         `${String(result.memories.length)} unique memories across ` +
-          `${String(queries.length)} queries (candidate pools total ${String(totalPool)})\n\n`,
+          `${String(queries.length)} queries${poolSuffix}\n\n`,
       );
 
       if (result.memories.length === 0) {
