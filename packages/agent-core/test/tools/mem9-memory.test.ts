@@ -48,7 +48,7 @@ describe('Mem9 memory tools', () => {
 
     expect(store.description).toContain('Temporal normalization');
     expect(store.description).toMatch(/last week|yesterday|Friday/);
-    expect(store.description).toContain('25 August 2023');
+    expect(store.description).toContain('14 March 2024');
     expect(store.description).toMatch(/anchor|reliable/);
     // The original relative phrase must NOT be retained alongside the
     // absolute date — not even parenthesized. A stored "('last Tues')"

@@ -26,16 +26,16 @@ When the conversation contains a relative time reference — "last week", "yeste
 
 Store ONLY the resolved absolute form. Do not keep the original relative phrase — not even in parentheses. A relative phrase's meaning dies at store time: a future reader's "last Tuesday" is anchored to a different "now" than yours, so retained relative wording can only mislead — it baits later retrieval into false matches and baits the answering model into recomputing dates against the wrong present.
 
-Examples (assume context tells you the reference date is 25 August 2023):
+Examples (assume context tells you the reference date is 14 March 2024):
 
-- ❌ "User went hiking last week and had a negative encounter."
-- ❌ "User went hiking around 18 August 2023 ('last week') and had a negative encounter."
-- ✅ "User went hiking around 18 August 2023 and had a negative encounter."
+- ❌ "User visited the dentist last week."
+- ❌ "User visited the dentist around 7 March 2024 ('last week')."
+- ✅ "User visited the dentist around 7 March 2024."
 
 - ❌ "User finished the report yesterday."
-- ✅ "User finished the report on 24 August 2023."
+- ✅ "User finished the report on 13 March 2024."
 
-If the context does not give you a clear anchor date — for example, an offhand reference like "I worked on this recently" with no system date, no prior dated turn, and no message timestamp — preserve the original wording rather than inventing precision. Storing "User worked on the report recently" is fine when no anchor is available; making up "around 20 August 2023" is not.
+If the context does not give you a clear anchor date — for example, an offhand reference like "I worked on this recently" with no system date, no prior dated turn, and no message timestamp — preserve the original wording rather than inventing precision. Storing "User worked on the report recently" is fine when no anchor is available; making up "around 10 March 2024" is not.
 
 Periodic schedules ("every Friday", "weekly", "monthly") are not relative time references and should be stored as-is.
 
@@ -54,7 +54,7 @@ Single-token generic words — `user`, `home`, `work`, `team`, `project`, `compa
 
 When the fact contains a named entity that a user may search for in another language, also add 1–2 cross-language keys with `source: "agent_translation"`. For example, if the fact is "Company office is at Otemachi, Tokyo", a good `agent_translation` key is "会社の所在地 大手町".
 
-When the fact is an instance of a broader recurring category — an activity, hobby, skill, place type, food or media preference — also add 1–2 CATEGORY keys phrased the way a future aggregate question would ask, and include the subject's name in them (the name keeps the key anchored and satisfies the token-overlap rule). For the fact "Daniel went kayaking with his colleagues", good category keys are "Daniel activities" and "Daniel outdoor activities": a future "what does Daniel do with his colleagues?" search matches the category key even though "kayaking" never appears in the query. Without a category key, aggregate searches can only find this fact if the searcher already guesses the specific word. Skip category keys for one-off facts that belong to no recurring category.
+When the fact is an instance of a broader recurring category — an activity, hobby, skill, place type, food or media preference — also add 1–2 CATEGORY keys phrased the way a future aggregate question would ask, and include the subject's name in them (the name keeps the key anchored and satisfies the token-overlap rule). For the fact "Daniel went kayaking with his colleagues", good category keys are "Daniel activities" and "Daniel water sports": a future "what does Daniel do with his colleagues?" search matches the category key even though "kayaking" never appears in the query. Without a category key, aggregate searches can only find this fact if the searcher already guesses the specific word. Skip category keys for one-off facts that belong to no recurring category.
 
 `weight` is optional and defaults to 1.0. Use higher (≈1.3–1.5) for keys that combine a predicate AND a named entity; use lower (≈0.5–0.8) for entity-only keys; category keys read well at ≈0.8–1.0.
 
