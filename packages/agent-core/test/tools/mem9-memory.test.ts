@@ -267,9 +267,130 @@ describe('Mem9 memory tools', () => {
     // (q15/q37/q95/q116: answers listing 1-2 of 4+ remembered items)
     // (#mem9-discussion:037b518a, 2026-06-12).
     expect(tool.description).toMatch(/asks for multiple items/i);
-    expect(tool.description).toMatch(/vary the facet/i);
-    expect(tool.description).toMatch(/stops surfacing new items/i);
+    expect(tool.description).toMatch(/facet variants TOGETHER in one call/);
+    expect(tool.description).toMatch(/cannot stop halfway/i);
     expect(tool.description).toMatch(/combine every distinct item/i);
+  });
+
+  it('caps facet variants at 4 in the schema', () => {
+    const ok = Mem9MemorySearchInputSchema.safeParse({
+      query: 'Melanie activities',
+      queries: ['Melanie hobbies', 'Melanie outdoors', 'Melanie crafts', 'Melanie sports'],
+    });
+    expect(ok.success).toBe(true);
+    const tooMany = Mem9MemorySearchInputSchema.safeParse({
+      query: 'Melanie activities',
+      queries: ['a', 'b', 'c', 'd', 'e'],
+    });
+    expect(tooMany.success).toBe(false);
+  });
+
+  it('fans out batch queries in parallel and merges with provenance', async () => {
+    // Code-guaranteed facet completeness (#mem9-discussion:037b518a,
+    // 2026-06-12): once the model submits facet variants, ALL of them
+    // run — the R9/R9b instability ("same question searched 19x then
+    // 5x between identical runs") cannot recur inside one call. Dedup
+    // is by memory id; merged entries carry which queries found them.
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: string | URL) => {
+      const url = new URL(String(input));
+      const q = url.searchParams.get('q') ?? '';
+      calls.push(q);
+      if (q === 'Melanie pottery') {
+        return jsonResponse({
+          memories: [
+            { id: 'm-1', content: 'Melanie made a plate in pottery class.', score: 0.06 },
+            { id: 'm-2', content: 'Melanie enjoys arts and crafts.', score: 0.05 },
+          ],
+        });
+      }
+      return jsonResponse({
+        memories: [
+          { id: 'm-3', content: 'Melanie went swimming with her kids.', score: 0.062 },
+          { id: 'm-2', content: 'Melanie enjoys arts and crafts.', score: 0.058 },
+        ],
+      });
+    });
+    const provider = new Mem9MemoryProvider({
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    const tool = new Mem9MemorySearchTool(provider);
+
+    const result = await executeTool(tool, {
+      turnId: 't1',
+      toolCallId: 'c-batch',
+      args: { query: 'Melanie pottery', queries: ['Melanie swimming'] },
+      signal,
+    });
+
+    expect(result.isError).toBe(false);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(calls).toContain('Melanie pottery');
+    expect(calls).toContain('Melanie swimming');
+    const content = toolContentString(result);
+    expect(content).toContain('#1: Melanie pottery');
+    expect(content).toContain('#2: Melanie swimming');
+    expect(content).toContain('3 unique memories across 2 queries');
+    // m-2 appears once, found by both queries, with the better score.
+    expect(content.match(/arts and crafts/g)).toHaveLength(1);
+    expect(content).toContain('Found by: #1, #2');
+    expect(content).toContain('Score: 0.058');
+    expect(content).not.toContain('Score: 0.05\n');
+  });
+
+  it('keeps the single-query output shape when no variants are given', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({ memories: [{ content: 'User prefers Python', score: 0.06 }] }),
+    );
+    const provider = new Mem9MemoryProvider({
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    const tool = new Mem9MemorySearchTool(provider);
+
+    const result = await executeTool(tool, {
+      turnId: 't1',
+      toolCallId: 'c-single',
+      args: { query: 'user language' },
+      signal,
+    });
+
+    expect(result.isError).toBe(false);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const content = toolContentString(result);
+    expect(content).toContain('Showing top 1 of 1 candidates');
+    expect(content).not.toContain('unique memories across');
+    expect(content).not.toContain('Found by:');
+  });
+
+  it('collapses duplicate variant queries and falls back to content-key dedup', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        // No ids: dedup must fall back to trimmed content.
+        memories: [{ content: 'Melanie enjoys camping.', score: 0.05 }],
+      }),
+    );
+    const provider = new Mem9MemoryProvider({
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    const tool = new Mem9MemorySearchTool(provider);
+
+    const result = await executeTool(tool, {
+      turnId: 't1',
+      toolCallId: 'c-dupes',
+      args: { query: 'Melanie camping', queries: ['Melanie camping', 'Melanie outdoors'] },
+      signal,
+    });
+
+    expect(result.isError).toBe(false);
+    // Duplicate variant collapsed: only 2 distinct queries fetched.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const content = toolContentString(result);
+    expect(content).toContain('1 unique memories across 2 queries');
+    expect(content.match(/enjoys camping/g)).toHaveLength(1);
+    expect(content).toContain('Found by: #1, #2');
   });
 
   it('stores memories with the Kimi session id and async hint', async () => {

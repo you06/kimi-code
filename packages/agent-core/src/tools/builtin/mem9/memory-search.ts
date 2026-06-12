@@ -18,6 +18,18 @@ export const Mem9MemorySearchInputSchema = z.object({
     .describe(
       'A short query close to how stored facts are worded. Prefer likely predicates and key terms. Good: "user lives in", "project uses React". Bad: full user utterances, "my home", "user home location".',
     ),
+  queries: z
+    .array(z.string().min(1))
+    .min(1)
+    .max(4)
+    .optional()
+    .describe(
+      'Up to 4 additional facet-variant queries to run together with `query` in one batch. ' +
+        'Use for questions asking about multiple items or aspects of one topic: submit the ' +
+        'primary phrasing in `query` and variants covering other facets (different ' +
+        'activities, objects, places, companions, time periods) here. All queries run in ' +
+        'parallel; results are merged and deduplicated with per-query provenance.',
+    ),
   limit: z
     .number()
     .int()
@@ -45,10 +57,12 @@ export class Mem9MemorySearchTool implements BuiltinTool<Mem9MemorySearchInput> 
   resolveExecution(args: Mem9MemorySearchInput): ToolExecution {
     const query = args.query.trim();
     if (query.length === 0) return { isError: true, output: 'query is required' };
+    const variantCount = effectiveQueries(query, args.queries).length - 1;
     const preview = query.length > 40 ? `${query.slice(0, 40)}…` : query;
+    const suffix = variantCount > 0 ? ` (+${String(variantCount)} facet variants)` : '';
     return {
       accesses: ToolAccesses.none(),
-      description: `Searching mem9 memory: ${preview}`,
+      description: `Searching mem9 memory: ${preview}${suffix}`,
       display: { kind: 'search', query, scope: 'mem9 long-term memory' },
       approvalRule: literalRulePattern(this.name, query),
       matchesRule: (ruleArgs) => matchesGlobRuleSubject(ruleArgs, query),
@@ -62,6 +76,10 @@ export class Mem9MemorySearchTool implements BuiltinTool<Mem9MemorySearchInput> 
   ): Promise<ExecutableToolResult> {
     try {
       const limit = args.limit ?? DEFAULT_LIMIT;
+      const queries = effectiveQueries(args.query, args.queries);
+      if (queries.length > 1) {
+        return await this.batchExecution(queries, limit, args.scan_all, signal);
+      }
       const result = await this.provider.search({
         query: args.query,
         limit,
@@ -124,6 +142,85 @@ export class Mem9MemorySearchTool implements BuiltinTool<Mem9MemorySearchInput> 
       return { isError: true, output: classifyMem9Error('Memory search', error) };
     }
   }
+
+  /**
+   * Batch facet search rendering. One numbered query legend up top,
+   * then the merged deduplicated list with per-memory provenance
+   * ("Found by: #1, #3"). Completeness across the submitted variants
+   * is guaranteed by code (provider.searchMany), not by hoping the
+   * model issues every follow-up search itself — the failure mode
+   * R9/R9b traced on multi-item questions (#mem9-discussion:037b518a,
+   * 2026-06-12).
+   */
+  private async batchExecution(
+    queries: readonly string[],
+    limit: number,
+    scanAll: boolean | undefined,
+    signal: AbortSignal | undefined,
+  ): Promise<ExecutableToolResult> {
+    try {
+      const result = await this.provider.searchMany({ queries, limit, scanAll, signal });
+      const builder = new ToolResultBuilder({ maxChars: 12_000, maxLineLength: 2_000 });
+
+      builder.write('Queries:\n');
+      queries.forEach((query, index) => {
+        builder.write(`  #${String(index + 1)}: ${query}\n`);
+      });
+      builder.write('Session scoped: false\n');
+      const totalPool = result.perQueryAvailableCounts.reduce((sum, count) => sum + count, 0);
+      builder.write(
+        `${String(result.memories.length)} unique memories across ` +
+          `${String(queries.length)} queries (candidate pools total ${String(totalPool)})\n\n`,
+      );
+
+      if (result.memories.length === 0) {
+        builder.write('No memories found.\n');
+      }
+
+      result.memories.forEach((memory, index) => {
+        if (index > 0) builder.write('---\n');
+        builder.write(`Memory ${String(index + 1)}\n`);
+        builder.write(`Content: ${memory.content}\n`);
+        if (memory.confidence !== undefined) {
+          builder.write(`Confidence: ${String(memory.confidence)}\n`);
+        }
+        if (memory.score !== undefined) {
+          builder.write(`Score: ${String(memory.score)}\n`);
+        }
+        if (memory.memoryType !== undefined) {
+          builder.write(`Type: ${memory.memoryType}\n`);
+        }
+        const sources = memory.foundByQueryIndexes.map((i) => `#${String(i + 1)}`).join(', ');
+        builder.write(`Found by: ${sources}\n`);
+      });
+
+      if (result.retryHint !== undefined) {
+        if (builder.nChars > 0) builder.write('\n');
+        builder.write(`Retry hint: ${result.retryHint}\n`);
+      }
+
+      return builder.ok();
+    } catch (error) {
+      return { isError: true, output: classifyMem9Error('Memory search', error) };
+    }
+  }
+}
+
+/**
+ * The deduplicated effective query list for one tool call: the primary
+ * `query` first, then any facet variants, trimmed, with exact
+ * duplicates dropped (first occurrence wins). Length 1 means the call
+ * takes the unchanged single-query path.
+ */
+function effectiveQueries(primary: string, variants: readonly string[] | undefined): string[] {
+  const out: string[] = [];
+  for (const candidate of [primary, ...(variants ?? [])]) {
+    const trimmed = candidate.trim();
+    if (trimmed.length === 0) continue;
+    if (out.includes(trimmed)) continue;
+    out.push(trimmed);
+  }
+  return out;
 }
 
 function classifyMem9Error(action: string, error: unknown): string {

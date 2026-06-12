@@ -16,6 +16,7 @@ const SEARCH_TIMEOUT_MS = 30_000;
 const STORE_TIMEOUT_MS = 120_000;
 
 export interface Mem9MemoryResult {
+  readonly id?: string;
   readonly content: string;
   readonly confidence?: number | string;
   readonly score?: number | string;
@@ -27,6 +28,23 @@ export interface Mem9MemorySearchResult {
   readonly effectiveQuery: string;
   readonly memories: readonly Mem9MemoryResult[];
   readonly availableResultCount: number;
+  readonly retryHint?: string;
+}
+
+/**
+ * One merged entry from a batch (multi-query) search.
+ * `foundByQueryIndexes` are 0-based indexes into the submitted query
+ * list — provenance for "which facet query surfaced this memory".
+ */
+export interface Mem9MemoryBatchEntry extends Mem9MemoryResult {
+  readonly foundByQueryIndexes: readonly number[];
+}
+
+export interface Mem9MemoryBatchSearchResult {
+  readonly queries: readonly string[];
+  readonly memories: readonly Mem9MemoryBatchEntry[];
+  /** Per-query candidate-pool sizes, index-aligned with `queries`. */
+  readonly perQueryAvailableCounts: readonly number[];
   readonly retryHint?: string;
 }
 
@@ -84,6 +102,14 @@ interface SearchOptions {
   readonly signal?: AbortSignal;
 }
 
+interface BatchSearchOptions {
+  readonly queries: readonly string[];
+  /** Per-query limit — same meaning as the single-search limit. */
+  readonly limit: number;
+  readonly scanAll?: boolean;
+  readonly signal?: AbortSignal;
+}
+
 interface StoreOptions {
   readonly content: string;
   readonly sessionId?: string;
@@ -96,6 +122,7 @@ interface StoreOptions {
 }
 
 interface RawSearchMemory {
+  readonly id?: unknown;
   readonly content?: unknown;
   readonly confidence?: unknown;
   readonly score?: unknown;
@@ -171,6 +198,80 @@ export class Mem9MemoryProvider {
       effectiveQuery: options.query,
       memories,
       availableResultCount: raw.length,
+      retryHint: retryHint(memories.length),
+    };
+  }
+
+  /**
+   * Batch facet search: run every query in parallel through the
+   * normal single-query path, then merge results into one
+   * deduplicated, provenance-tagged list.
+   *
+   * Motivation (#mem9-discussion:037b518a, R9/R9b/R10, 2026-06-12):
+   * multi-item questions fail when the model stops searching after
+   * the first satisfying result — memories for different facets of
+   * one topic rank differently per query. Prose guidance alone
+   * triggered this behavior unreliably (an identical run pair showed
+   * the same question searched 19× then 5×). Batch search moves the
+   * completeness guarantee into code: once the model decides to
+   * facet-search, ALL submitted variants run, and the merge/dedup is
+   * deterministic.
+   *
+   * Merge semantics: dedup by memory `id` when the server provides
+   * one, otherwise by trimmed content. The first occurrence wins for
+   * display fields; the entry keeps the best (max) score across
+   * queries for ordering, and accumulates every query index that
+   * surfaced it. Cross-query ordering: confidence desc, then score
+   * desc — the same comparator as the single path.
+   */
+  async searchMany(options: BatchSearchOptions): Promise<Mem9MemoryBatchSearchResult> {
+    const results = await Promise.all(
+      options.queries.map((query) =>
+        this.search({
+          query,
+          limit: options.limit,
+          scanAll: options.scanAll,
+          signal: options.signal,
+        }),
+      ),
+    );
+
+    const merged = new Map<string, { entry: Mem9MemoryBatchEntry; bestScore: number }>();
+    results.forEach((result, queryIndex) => {
+      for (const memory of result.memories) {
+        const key = memory.id !== undefined ? `id:${memory.id}` : `content:${memory.content}`;
+        const existing = merged.get(key);
+        if (existing === undefined) {
+          merged.set(key, {
+            entry: { ...memory, foundByQueryIndexes: [queryIndex] },
+            bestScore: numericValue(memory.score),
+          });
+          continue;
+        }
+        const score = numericValue(memory.score);
+        merged.set(key, {
+          entry: {
+            ...existing.entry,
+            score: score > existing.bestScore ? memory.score : existing.entry.score,
+            foundByQueryIndexes: [...existing.entry.foundByQueryIndexes, queryIndex],
+          },
+          bestScore: Math.max(existing.bestScore, score),
+        });
+      }
+    });
+
+    const memories = [...merged.values()]
+      .map((slot) => slot.entry)
+      .toSorted((left, right) => {
+        const confidenceDelta = numericValue(right.confidence) - numericValue(left.confidence);
+        if (confidenceDelta !== 0) return confidenceDelta;
+        return numericValue(right.score) - numericValue(left.score);
+      });
+
+    return {
+      queries: options.queries,
+      memories,
+      perQueryAvailableCounts: results.map((result) => result.availableResultCount),
       retryHint: retryHint(memories.length),
     };
   }
@@ -309,6 +410,7 @@ function normalizeMemory(raw: unknown): Mem9MemoryResult | undefined {
   const item = raw as RawSearchMemory;
   const content = typeof item.content === 'string' ? item.content.trim() : '';
   if (content.length === 0) return undefined;
+  const id = typeof item.id === 'string' && item.id.length > 0 ? item.id : undefined;
   const memoryType =
     typeof item.memory_type === 'string' && item.memory_type.length > 0
       ? item.memory_type
@@ -318,6 +420,7 @@ function normalizeMemory(raw: unknown): Mem9MemoryResult | undefined {
       ? item.relative_age
       : undefined;
   return {
+    id,
     content,
     confidence: numberOrString(item.confidence),
     score: numberOrString(item.score),
