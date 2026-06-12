@@ -270,6 +270,16 @@ describe('Mem9 memory tools', () => {
     expect(tool.description).toMatch(/vary the facet/i);
     expect(tool.description).toMatch(/stops surfacing new items/i);
     expect(tool.description).toMatch(/combine every distinct item/i);
+    // Narrowing clause (same-corpus R9/R9b repeat showed the broad
+    // version stably misfires on single-fact questions whose
+    // asked-about referent is absent — the agent assembles related
+    // facets into an answer instead of reporting absence). Facet
+    // collection is for multi-item questions about subjects that ARE
+    // in memory; absent referents get exact-referent searches and
+    // abstention (#mem9-discussion:037b518a, 2026-06-12).
+    expect(tool.description).toMatch(/only when the question explicitly asks for multiple remembered items/i);
+    expect(tool.description).toMatch(/not present in memory/i);
+    expect(tool.description).toMatch(/exact referents/i);
   });
 
   it('stores memories with the Kimi session id and async hint', async () => {
