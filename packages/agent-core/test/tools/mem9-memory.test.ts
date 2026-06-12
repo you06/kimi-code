@@ -260,6 +260,16 @@ describe('Mem9 memory tools', () => {
     expect(tool.description).toMatch(/ENTITY or OBJECT words/);
     expect(tool.description).toMatch(/higher `limit`/);
     expect(tool.description).toContain('Showing top N of M candidates');
+    // Facet collection: multi-item questions fail by stopping at the
+    // first satisfying result — memories for different facets of one
+    // topic rank differently per query, so one search rarely surfaces
+    // all items. The recurring shape across LoCoMo trace reviews
+    // (q15/q37/q95/q116: answers listing 1-2 of 4+ remembered items)
+    // (#mem9-discussion:037b518a, 2026-06-12).
+    expect(tool.description).toMatch(/asks for multiple items/i);
+    expect(tool.description).toMatch(/vary the facet/i);
+    expect(tool.description).toMatch(/stops surfacing new items/i);
+    expect(tool.description).toMatch(/combine every distinct item/i);
   });
 
   it('stores memories with the Kimi session id and async hint', async () => {
