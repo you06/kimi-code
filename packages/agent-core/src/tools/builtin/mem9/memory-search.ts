@@ -21,14 +21,22 @@ export const Mem9MemorySearchInputSchema = z.object({
   queries: z
     .array(z.string().min(1))
     .min(1)
-    .max(4)
+    // Forgiving cap: R11 traces showed 13 calls rejected by a hard
+    // max(4) when the model enthusiastically passed more variants.
+    // Accept a generous array and trim to the effective cap at
+    // execution (with an explicit note), instead of failing the call.
+    .max(10)
     .optional()
     .describe(
       'Up to 4 additional facet-variant queries to run together with `query` in one batch. ' +
         'Use for questions asking about multiple items or aspects of one topic: submit the ' +
         'primary phrasing in `query` and variants covering other facets (different ' +
-        'activities, objects, places, companions, time periods) here. All queries run in ' +
-        'parallel; results are merged and deduplicated with per-query provenance.',
+        'activities, objects, places, companions, time periods) here. Variants must differ ' +
+        'in DOMAIN or OBJECT, not wording: synonyms of the same phrase ("user does" / ' +
+        '"user partakes in" / "user enjoys") all retrieve the same cluster and waste the ' +
+        'batch — write variants like "user crafts" / "user outdoor trips" / "user sports" ' +
+        'instead. All queries run in parallel; results are merged and deduplicated with ' +
+        'per-query provenance.',
     ),
   limit: z
     .number()
@@ -57,7 +65,7 @@ export class Mem9MemorySearchTool implements BuiltinTool<Mem9MemorySearchInput> 
   resolveExecution(args: Mem9MemorySearchInput): ToolExecution {
     const query = args.query.trim();
     if (query.length === 0) return { isError: true, output: 'query is required' };
-    const variantCount = effectiveQueries(query, args.queries).length - 1;
+    const variantCount = effectiveQueries(query, args.queries).queries.length - 1;
     const preview = query.length > 40 ? `${query.slice(0, 40)}…` : query;
     const suffix = variantCount > 0 ? ` (+${String(variantCount)} facet variants)` : '';
     return {
@@ -76,9 +84,9 @@ export class Mem9MemorySearchTool implements BuiltinTool<Mem9MemorySearchInput> 
   ): Promise<ExecutableToolResult> {
     try {
       const limit = args.limit ?? DEFAULT_LIMIT;
-      const queries = effectiveQueries(args.query, args.queries);
+      const { queries, dropped } = effectiveQueries(args.query, args.queries);
       if (queries.length > 1) {
-        return await this.batchExecution(queries, limit, args.scan_all, signal);
+        return await this.batchExecution(queries, dropped, limit, args.scan_all, signal);
       }
       const result = await this.provider.search({
         query: args.query,
@@ -154,6 +162,7 @@ export class Mem9MemorySearchTool implements BuiltinTool<Mem9MemorySearchInput> 
    */
   private async batchExecution(
     queries: readonly string[],
+    droppedVariants: number,
     limit: number,
     scanAll: boolean | undefined,
     signal: AbortSignal | undefined,
@@ -166,6 +175,12 @@ export class Mem9MemorySearchTool implements BuiltinTool<Mem9MemorySearchInput> 
       queries.forEach((query, index) => {
         builder.write(`  #${String(index + 1)}: ${query}\n`);
       });
+      if (droppedVariants > 0) {
+        builder.write(
+          `Note: ${String(droppedVariants)} extra variant(s) beyond the first ` +
+            `${String(MAX_EFFECTIVE_QUERIES)} were not run — batch again with them if needed.\n`,
+        );
+      }
       builder.write('Session scoped: false\n');
       const totalPool = result.perQueryAvailableCounts.reduce((sum, count) => sum + count, 0);
       builder.write(
@@ -206,21 +221,35 @@ export class Mem9MemorySearchTool implements BuiltinTool<Mem9MemorySearchInput> 
   }
 }
 
+/** Max queries that actually run in one batch (primary + 4 variants). */
+const MAX_EFFECTIVE_QUERIES = 5;
+
 /**
  * The deduplicated effective query list for one tool call: the primary
  * `query` first, then any facet variants, trimmed, with exact
- * duplicates dropped (first occurrence wins). Length 1 means the call
- * takes the unchanged single-query path.
+ * duplicates dropped (first occurrence wins), capped at
+ * MAX_EFFECTIVE_QUERIES (forgiving trim — overlong variant lists run
+ * their first variants instead of erroring; R11 saw 13 hard-cap
+ * rejections). Length 1 means the call takes the unchanged
+ * single-query path.
  */
-function effectiveQueries(primary: string, variants: readonly string[] | undefined): string[] {
+function effectiveQueries(
+  primary: string,
+  variants: readonly string[] | undefined,
+): { queries: string[]; dropped: number } {
   const out: string[] = [];
+  let dropped = 0;
   for (const candidate of [primary, ...(variants ?? [])]) {
     const trimmed = candidate.trim();
     if (trimmed.length === 0) continue;
     if (out.includes(trimmed)) continue;
+    if (out.length >= MAX_EFFECTIVE_QUERIES) {
+      dropped++;
+      continue;
+    }
     out.push(trimmed);
   }
-  return out;
+  return { queries: out, dropped };
 }
 
 function classifyMem9Error(action: string, error: unknown): string {

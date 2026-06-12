@@ -272,17 +272,56 @@ describe('Mem9 memory tools', () => {
     expect(tool.description).toMatch(/combine every distinct item/i);
   });
 
-  it('caps facet variants at 4 in the schema', () => {
+  it('accepts overlong variant lists and trims at execution instead of erroring', async () => {
+    // Forgiving cap: R11 traces showed 13 batch calls rejected by a
+    // hard schema max(4) when the model passed extra variants. The
+    // schema now accepts up to 10; execution runs the first 5
+    // effective queries and tells the model what was dropped
+    // (#mem9-discussion:037b518a, 2026-06-12).
     const ok = Mem9MemorySearchInputSchema.safeParse({
       query: 'Melanie activities',
-      queries: ['Melanie hobbies', 'Melanie outdoors', 'Melanie crafts', 'Melanie sports'],
+      queries: ['a', 'b', 'c', 'd', 'e', 'f'],
     });
     expect(ok.success).toBe(true);
-    const tooMany = Mem9MemorySearchInputSchema.safeParse({
-      query: 'Melanie activities',
-      queries: ['a', 'b', 'c', 'd', 'e'],
+
+    const fetchImpl = vi.fn(async () => jsonResponse({ memories: [] }));
+    const provider = new Mem9MemoryProvider({
+      apiKey: 'sk-test',
+      fetchImpl: fetchImpl as typeof fetch,
     });
-    expect(tooMany.success).toBe(false);
+    const tool = new Mem9MemorySearchTool(provider);
+    const result = await executeTool(tool, {
+      turnId: 't1',
+      toolCallId: 'c-trim',
+      args: {
+        query: 'Melanie activities',
+        queries: ['Melanie crafts', 'Melanie sports', 'Melanie trips', 'Melanie music', 'Melanie food'],
+      },
+      signal,
+    });
+
+    expect(result.isError).toBe(false);
+    // Primary + first 4 variants run; the 5th variant is dropped.
+    expect(fetchImpl).toHaveBeenCalledTimes(5);
+    const content = toolContentString(result);
+    expect(content).toContain('#5: Melanie music');
+    expect(content).not.toContain('Melanie food');
+    expect(content).toContain('Note: 1 extra variant(s)');
+  });
+
+  it('teaches that variants must differ in domain, not wording', () => {
+    // R11 q15 failure shape: the model batched 4 SYNONYM variants
+    // ("does"/"partakes in"/"hobbies"/"enjoys") which all retrieved
+    // the same generic cluster — none of the four gold items surfaced.
+    // Orthogonal facets, not paraphrases (#mem9-discussion:037b518a).
+    const provider = providerWithResponse({ memories: [] });
+    const search = new Mem9MemorySearchTool(provider);
+    const queriesDescription = (
+      search.parameters as { properties: { queries: { description: string } } }
+    ).properties.queries.description;
+    expect(queriesDescription).toMatch(/differ in DOMAIN or OBJECT, not wording/);
+    expect(queriesDescription).toMatch(/synonyms of the same phrase/i);
+    expect(queriesDescription).toMatch(/waste the batch/i);
   });
 
   it('fans out batch queries in parallel and merges with provenance', async () => {
